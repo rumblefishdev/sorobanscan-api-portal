@@ -13,7 +13,8 @@ stellar-prices-api's `web/portal`, deployed from there. That copy stays the depl
 the switch, step 3 of the cutover in
 [the shared sign-in spec](docs/superpowers/specs/2026-11-17-shared-sign-in-design.md).
 
-React 19, Vite 8, react-router 8, TypeScript, Vitest; the Prices portal also MUI 7 with emotion.
+React 19, Vite 8, react-router 8, TypeScript, Vitest; the Prices portal and the sign-in page and
+dashboard also MUI 7 with emotion.
 The hub's design and the reasons behind each choice are in
 [its spec](docs/superpowers/specs/2026-11-17-api-hub-design.md); the build steps in
 [its plan](docs/superpowers/plans/2026-11-17-api-hub-plan.md). The Prices portal's move is in
@@ -66,10 +67,13 @@ The hub shows the SorobanScan favicons, the Prices portal's.
 
 Its code is in `src/prices/`, copied from stellar-prices-api at `7d9e9e70`: `web/portal/src/X`
 is `src/prices/X`, with Prices' names, code style and comments. `src/boot.js` picks the tree by
-the address: `/api/prices-api` and everything under it boots the Prices portal, every other
-address the hub. Each tree brings its own styles, fonts and router, so neither's reach the other.
-`tsconfig.prices.json` checks `src/prices` with Prices' own compiler options; the hub's
-`tsconfig.json` leaves it out, and no hub TypeScript file imports from it.
+the address: `/api/prices-api` and everything under it boots the Prices portal, `/api/login`,
+`/api/dashboard` and everything under the dashboard the sign-in page and dashboard
+(`src/account/`, below), every other address the hub. Each tree brings its own styles, fonts and
+router, so none's reach another. `tsconfig.prices.json` checks `src/prices` with Prices' own
+compiler options, and `src/account` with them, since it is built from Prices' theme and
+components; the hub's `tsconfig.json` leaves both out, and no hub TypeScript file imports from
+either.
 
 `VITE_PORTAL_API_ORIGIN` is its backend's origin, a build setting. Production's is
 `https://prices-api.sorobanscan.com`:
@@ -143,6 +147,18 @@ keeps the old server running.
 
 Only the dev and preview servers run it: deploying it (in AWS, beside the explorer's CloudFront,
 the cutover's step 1) is a later plan.
+
+## The sign-in page and the dashboard
+
+`/api/login` and `/api/dashboard` (`src/account/`) are the hub's one sign-in and one dashboard,
+drawn as the Prices portal's: its theme, login card and dashboard panels. The hub's top bar links
+to them. `/login`'s button goes to the backend's `auth/login`, which comes back to `/dashboard`,
+or to `/login?signin=<reason>` with the refusal in Prices' words. Without the backend's settings
+`/login` says sign-in is not configured. The dashboard has a tab per API, `/api/dashboard/<api>`;
+no tab shows a key or usage yet.
+
+`VITE_PRODUCTS`, a build setting, is the comma list of APIs whose tab is open (`prices` unless it
+names others, `prices,x402` once x402 opens); the other tabs show "Coming soon" and don't open.
 
 ## Putting it on production
 

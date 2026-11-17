@@ -20,5 +20,5 @@
     "skipLibCheck": true
   },
   "include": ["src", "test", "vite.config.ts"],
-  "exclude": ["src/prices"]
+  "exclude": ["src/prices", "src/account"]
 }

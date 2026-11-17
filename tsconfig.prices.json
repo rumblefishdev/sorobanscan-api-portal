@@ -1,7 +1,8 @@
 {
   // The Prices portal, checked as stellar-prices-api checks it (its `tsconfig.base.json` with
   // `web/portal/tsconfig.app.json` and `tsconfig.spec.json`), not with this repo's stricter
-  // `noUncheckedIndexedAccess` and `verbatimModuleSyntax`.
+  // `noUncheckedIndexedAccess` and `verbatimModuleSyntax`. The account pages (`src/account`) are
+  // built from the portal's theme and components, so they are checked with it.
   "compilerOptions": {
     "target": "es2022",
     "lib": ["dom", "esnext"],
@@ -19,5 +20,5 @@
     "isolatedModules": true,
     "skipLibCheck": true
   },
-  "include": ["src/prices"]
+  "include": ["src/prices", "src/account"]
 }

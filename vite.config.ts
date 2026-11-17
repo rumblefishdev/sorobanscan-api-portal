@@ -142,12 +142,16 @@ export default defineConfig(({ mode }) => {
       // `base` above: that follows `VITE_BASE_PATH`, which a local `.env` file may set.
       env: { BASE_URL: DEFAULT_BASE_PATH },
       projects: [
-        // The page's two trees, in a DOM. A file here that tests Node code asks for `node` itself.
+        // The page's three trees, in a DOM. A file here that tests Node code asks for `node` itself.
         {
           extends: true,
           test: {
             name: "page",
-            include: ["test/**/*.test.{ts,tsx}", "src/prices/**/*.spec.{ts,tsx}"],
+            include: [
+              "test/**/*.test.{ts,tsx}",
+              "src/prices/**/*.spec.{ts,tsx}",
+              "src/account/**/*.spec.{ts,tsx}",
+            ],
             environment: "jsdom",
             setupFiles: ["test/setup.ts"],
             // `src/prices/main.spec.tsx` imports the Prices tree cold, MUI and all, after

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { isPricesPath } from "../src/boot.js";
+import { isAccountPath, isPricesPath } from "../src/boot.js";
 
 // Each tree's entry renders at import. Here they stand in with a word in `#root`, so a test sees
 // which tree the address booted, and that the sign-in popup booted none. `vi.mock` covers the
@@ -11,6 +11,7 @@ const standIn = (tree: string) => () => {
 };
 vi.mock("../src/hub/main.tsx", () => ({}));
 vi.mock("../src/prices/main.tsx", () => ({}));
+vi.mock("../src/account/main.tsx", () => ({}));
 
 describe("isPricesPath", () => {
   it.each([
@@ -31,6 +32,27 @@ describe("isPricesPath", () => {
     expect(isPricesPath("/api/next/prices-api/", "/api/next/")).toBe(true));
 });
 
+describe("isAccountPath", () => {
+  it.each(["/api/login", "/api/dashboard", "/api/dashboard/prices", "/api/dashboard/x402"])(
+    "boots the account pages for %s",
+    (p) => expect(isAccountPath(p, "/api/")).toBe(true),
+  );
+  it.each([
+    "/api/loginX",
+    "/api/dashboardX",
+    "/api/",
+    "/api",
+    "/api/prices-api/login",
+    "/api/prices-api/dashboard",
+    "/login",
+    "/dashboard",
+  ])("leaves %s to another tree", (p) => expect(isAccountPath(p, "/api/")).toBe(false));
+  it("follows another base", () => {
+    expect(isAccountPath("/api/next/login", "/api/next/")).toBe(true);
+    expect(isAccountPath("/api/login", "/api/next/")).toBe(false);
+  });
+});
+
 describe("the boot module", () => {
   const root = () => document.getElementById("root");
   const postMessage = vi.fn();
@@ -46,6 +68,7 @@ describe("the boot module", () => {
     vi.resetModules();
     vi.doMock("../src/hub/main.tsx", standIn("the hub"));
     vi.doMock("../src/prices/main.tsx", standIn("Prices"));
+    vi.doMock("../src/account/main.tsx", standIn("the account"));
     postMessage.mockReset();
     document.body.innerHTML = '<div id="root"></div>';
     vi.spyOn(window, "close").mockImplementation(() => {});
@@ -65,6 +88,12 @@ describe("the boot module", () => {
     ["/api/prices-apiX", "the hub"],
     ["/api/prices-api", "Prices"],
     ["/api/prices-api/dashboard", "Prices"],
+    ["/api/login", "the account"],
+    ["/api/login?signin=not_member", "the account"],
+    ["/api/dashboard", "the account"],
+    ["/api/dashboard/prices", "the account"],
+    ["/api/loginX", "the hub"],
+    ["/api/prices-api/login", "Prices"],
   ])("at %s boots %s", async (path, tree) => {
     await boot(path);
     expect(root()?.textContent).toBe(tree);

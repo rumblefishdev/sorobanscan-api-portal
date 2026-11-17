@@ -56,7 +56,11 @@ describe("the tests' config", () => {
       extends: true,
       test: {
         name: "page",
-        include: ["test/**/*.test.{ts,tsx}", "src/prices/**/*.spec.{ts,tsx}"],
+        include: [
+          "test/**/*.test.{ts,tsx}",
+          "src/prices/**/*.spec.{ts,tsx}",
+          "src/account/**/*.spec.{ts,tsx}",
+        ],
         environment: "jsdom",
         setupFiles: ["test/setup.ts"],
         // A cold import of the Prices tree takes more than Vitest's 5 s under the full suite.
