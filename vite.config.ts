@@ -133,17 +133,28 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [react(), noindexOutsideApi()],
     test: {
-      // `bff/test` is the hub's backend: each of its files asks for the `node` environment.
-      include: [
-        "test/**/*.test.{ts,tsx}",
-        "src/prices/**/*.spec.{ts,tsx}",
-        "bff/test/**/*.test.ts",
-      ],
-      environment: "jsdom",
-      setupFiles: ["test/setup.ts"],
       // Vitest gives `import.meta.env.BASE_URL` as `/` whatever `base` is. The tests see the
-      // build's, which the boot module and the Prices paths are derived from.
-      env: { BASE_URL: base },
+      // default prefix, which the boot module and the Prices paths are derived from, and not the
+      // `base` above: that follows `VITE_BASE_PATH`, which a local `.env` file may set.
+      env: { BASE_URL: DEFAULT_BASE_PATH },
+      projects: [
+        // The page's two trees, in a DOM. A file here that tests Node code asks for `node` itself.
+        {
+          extends: true,
+          test: {
+            name: "page",
+            include: ["test/**/*.test.{ts,tsx}", "src/prices/**/*.spec.{ts,tsx}"],
+            environment: "jsdom",
+            setupFiles: ["test/setup.ts"],
+          },
+        },
+        // The hub's backend, which runs on Node: every file here gets Node and none of the page's
+        // setup, by where it is rather than by a docblock it might lack.
+        {
+          extends: true,
+          test: { name: "bff", include: ["bff/test/**/*.test.ts"], environment: "node" },
+        },
+      ],
     },
   };
 });

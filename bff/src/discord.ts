@@ -27,7 +27,9 @@ export const isSnowflake = (value: unknown): value is string =>
  * - `pending`: a member who hasn't accepted the guild's rules yet;
  * - `not_member`: Discord said it isn't one;
  * - `unknown`: Discord didn't say (an outage, a rate limit, a rejected token, an answer of
- *   another shape, a member answer without `pending`). Never a "no".
+ *   another shape, a member answer without `pending`). Never a "no". {@link httpDiscord} throws
+ *   a {@link DiscordError} instead, naming the step and Discord's status, which the hub takes
+ *   for `unknown` and logs.
  */
 export type MemberAnswer = "member" | "pending" | "not_member" | "unknown";
 
@@ -51,7 +53,10 @@ export interface Discord {
   ): Promise<{ accessToken: string; scope: string }>;
   /** Whose token it is. Throws a {@link DiscordError}. */
   user(token: string): Promise<{ id: string; username: string }>;
-  /** Whether that account is a member of `guildId`. What it can't tell is `unknown`. */
+  /**
+   * Whether that account is a member of `guildId`. What it can't tell is `unknown`, or a thrown
+   * {@link DiscordError} saying why.
+   */
   member(token: string, guildId: string): Promise<MemberAnswer>;
 }
 
@@ -68,7 +73,9 @@ export function httpDiscord(
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       });
     } catch (error) {
-      throw new DiscordError(`could not reach Discord to ${step}`, { cause: error });
+      // The cause's name tells a timeout from a refused connection; its message is not read.
+      const name = error instanceof Error ? error.name : "failure";
+      throw new DiscordError(`could not reach Discord to ${step} (${name})`, { cause: error });
     }
   };
   const json = async (step: string, response: Response): Promise<Record<string, unknown>> => {
@@ -130,17 +137,11 @@ export function httpDiscord(
       return { id: body.id, username: body.username };
     },
 
+    // What it can't tell is thrown rather than returned as `unknown`, so the hub's log can say
+    // why: the step and Discord's status, never the body or the token.
     async member(token, guildId) {
-      let response: Response;
-      try {
-        response = await request(
-          "read the membership",
-          `/users/@me/guilds/${guildId}/member`,
-          bearer(token),
-        );
-      } catch {
-        return "unknown";
-      }
+      const step = "read the membership";
+      const response = await request(step, `/users/@me/guilds/${guildId}/member`, bearer(token));
       const body: unknown = await response.json().catch(() => undefined);
       const fields =
         typeof body === "object" && body !== null ? (body as Record<string, unknown>) : {};
@@ -149,14 +150,16 @@ export function httpDiscord(
         // rules. An answer that doesn't say is not taken for a cleared screening.
         if (fields.pending === false) return "member";
         if (fields.pending === true) return "pending";
-        return "unknown";
+        throw new DiscordError(
+          `Discord answered ${response.status} to ${step} without a boolean \`pending\``,
+        );
       }
       // Only a 404 with a code that says so is "not a member": a bare 404 can be a proxy's or an
       // outage's, and telling a member they aren't one is the worse mistake.
       if (response.status === 404 && NOT_MEMBER_CODES.includes(fields.code as number)) {
         return "not_member";
       }
-      return "unknown";
+      throw new DiscordError(`Discord answered ${response.status} to ${step}`);
     },
   };
 }

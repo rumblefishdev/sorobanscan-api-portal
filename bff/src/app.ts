@@ -100,14 +100,15 @@ const noStore: MiddlewareHandler = async (c, next) => {
 /**
  * The hub's backend (BFF): sign-in with Discord and the session, under `${base}hub/`.
  *
- * - `GET auth/login` sends the browser to Discord.
+ * - `GET auth/login` sends the browser to Discord. An `action` other than `signin` is refused
+ *   with 400 `unknown_action`.
  * - `GET auth/callback` is where Discord sends it back: a member who has cleared screening gets a
  *   session and goes to `${base}dashboard`; anyone else goes to `${base}login?signin=<reason>`.
  * - `GET me` says who is signed in: `{authenticated: false}` for nobody, never an error.
  * - `POST auth/logout` ends the session.
  *
- * Without settings every route answers 503 `sign_in_not_configured`. It never answers 403 or 404:
- * the production CDN turns those into another page.
+ * Without settings every route answers 503 `sign_in_not_configured`. A failure of its own is 500
+ * `internal`. It never answers 403 or 404: the production CDN turns those into another page.
  */
 export function createHub(settings: HubSettings | undefined, deps: HubDeps = {}): Hono {
   if (!settings) {
@@ -138,8 +139,20 @@ export function createHub(settings: HubSettings | undefined, deps: HubDeps = {})
     return next();
   });
   app.notFound((c) => c.json({ error: "unknown_route" }, 400));
+  // Hono's own handler writes the whole error to the console, and an error's message, stack or
+  // cause can hold what a request carried. Its name and the route say where to look.
+  app.onError((error, c) => {
+    console.error(`request_failed ${error.name} ${c.req.method} ${c.req.routePath}`);
+    return c.json({ error: "internal" }, 500);
+  });
 
   app.get("/auth/login", (c) => {
+    // Refused, not read as a sign-in: the callback would then complete another action than the
+    // one the visitor confirmed, once there are more. Named once, or not at all.
+    const asked = c.req.queries("action");
+    if (asked !== undefined && (asked.length !== 1 || asked[0] !== SIGNIN)) {
+      return c.json({ error: "unknown_action" }, 400);
+    }
     const nonce = randomBytes(32).toString("base64url");
     const verifier = randomBytes(32).toString("base64url");
     const state = signer.sign("state", { action: SIGNIN, nonce }, PENDING_TTL_SECONDS);
@@ -148,13 +161,15 @@ export function createHub(settings: HubSettings | undefined, deps: HubDeps = {})
       { action: SIGNIN, nonce, verifier },
       PENDING_TTL_SECONDS,
     );
+    const challenge = createHash("sha256").update(verifier).digest("base64url");
+    const to = discord.authorizeUrl({ state, challenge, redirectUri });
+    // Set only once there is somewhere to send the browser.
     c.header(
       "Set-Cookie",
       setCookie(PENDING_COOKIE, pending, pendingCookiePath, PENDING_TTL_SECONDS, secure),
       { append: true },
     );
-    const challenge = createHash("sha256").update(verifier).digest("base64url");
-    return c.redirect(discord.authorizeUrl({ state, challenge, redirectUri }), 303);
+    return c.redirect(to, 303);
   });
 
   app.get("/auth/callback", async (c) => {
@@ -218,9 +233,10 @@ export function createHub(settings: HubSettings | undefined, deps: HubDeps = {})
     let answer: MemberAnswer;
     try {
       answer = await discord.member(accessToken, guildId);
-    } catch {
+    } catch (error) {
       // Discord failing to answer is not Discord saying no.
-      answer = "unknown";
+      const [outcome, reason] = MEMBER_REFUSALS.unknown;
+      return refuse(outcome, `${reason}: ${describeFailure(error)}`, user.id);
     }
     if (answer !== "member") {
       const [outcome, reason] = MEMBER_REFUSALS[answer] ?? MEMBER_REFUSALS.unknown;

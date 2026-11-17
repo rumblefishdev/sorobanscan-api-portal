@@ -30,8 +30,11 @@ pnpm dev        # the hub under /api/, the Prices portal under /api/prices-api/
 pnpm test       # both trees' tests, and builds that check every file the page asks for
 pnpm typecheck  # the hub, then the Prices portal with its own options
 pnpm build      # the bundle in dist/
-pnpm preview    # dist/ served locally, under the same prefix
+pnpm preview    # dist/ served locally, under the same prefix and with the same proxy as dev
 ```
+
+Both `pnpm dev` and `pnpm preview` send the Prices backend's paths to Prices' production API
+(see "The Prices portal" below), so the browser sees one origin.
 
 ## The prefix: `VITE_BASE_PATH`
 
@@ -53,9 +56,10 @@ on every page of the app as the Prices portal does: Google Tag Manager's contain
 `GTM-TBF2GP5S` (`www.googletagmanager.com`) and HubSpot's consent banner `8102665`
 (`js.hs-scripts.com`), with Prices' consent-mode defaults set before either loads. Its fonts are
 in the bundle: the hub's three (Space Grotesk, Manrope, JetBrains Mono) and the Prices portal's
-own. The build's tests check that the page's script and stylesheet come from under the prefix,
-and that its HTML and stylesheets name no host but those two. The hub shows the SorobanScan
-favicons, the Prices portal's.
+own. The build's tests check that every file the page's HTML asks for, the boot script and the
+favicons, is under the prefix (each tree's script and CSS come through the boot chunk's preload
+map, from the same `assets/`), and that its HTML and stylesheets name no host but those two.
+The hub shows the SorobanScan favicons, the Prices portal's.
 
 ## The Prices portal
 
@@ -64,7 +68,7 @@ is `src/prices/X`, with Prices' names, code style and comments. `src/boot.js` pi
 the address: `/api/prices-api` and everything under it boots the Prices portal, every other
 address the hub. Each tree brings its own styles, fonts and router, so neither's reach the other.
 `tsconfig.prices.json` checks `src/prices` with Prices' own compiler options; the hub's
-`tsconfig.json` leaves it out, and no hub file imports from it.
+`tsconfig.json` leaves it out, and no hub TypeScript file imports from it.
 
 `VITE_PORTAL_API_ORIGIN` is its backend's origin, a build setting. Production's is
 `https://prices-api.sorobanscan.com`:
@@ -103,12 +107,19 @@ Signing in locally needs Prices' backend run locally, as its own README says
 
 ## Putting it on production
 
-Nothing in this repo uploads it. The bundle, built for its address, goes by hand to the bucket
-the product pages are served from, and the explorer's CloudFront distribution needs behaviours
-for it: behind Basic Auth at an address of its own until it opens, or at `/api/` once it
-replaces the old hub. The hub spec's section "Putting it on production" lists what each of those
-takes. The Prices portal goes with the hub at the switch; the shared sign-in spec's cutover says
-in what order.
+Nothing in this repo uploads it, and there is no preview address (the shared sign-in spec's
+decision 10): the hub and the Prices portal go up together at their real addresses, `/api/` and
+`/api/prices-api/`, at the switch, step 3 of the spec's cutover, and are tried there. The
+production build must name the Prices backend, or the Prices pages reach none:
+`VITE_PORTAL_API_ORIGIN=https://prices-api.sorobanscan.com pnpm build`.
+
+The bundle goes by hand to the bucket the product pages are served from, under `api/index.html`
+and `api/assets/` and never under `api/prices-api/`, so the old Prices portal's files stay where
+they are. The explorer's CloudFront then serves `/api`, `/api/`, `/api/assets/*`, `/api/login`,
+`/api/dashboard*`, `/api/privacy-policy` and `/api/prices-api/*` from it; reverting that change
+brings the old hub and the old Prices portal back at once. The cutover lists the steps before
+and after it; the hub spec's section "Putting it on production" says how the upload is done
+(two `aws s3 sync` runs and an invalidation).
 
 ## The text
 

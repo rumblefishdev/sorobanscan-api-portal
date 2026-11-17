@@ -1,6 +1,7 @@
+// @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import viteConfig, { devProxy } from '../../vite.config.ts';
+import viteConfig, { devProxy } from '../vite.config.ts';
 
 /**
  * The dev proxy carries this app's one security property and had no coverage:
@@ -13,7 +14,10 @@ import viteConfig, { devProxy } from '../../vite.config.ts';
  * is what lets these tests set a target without writing one to disk.
  *
  * From stellar-prices-api 7d9e9e70 `web/portal/src/dev-proxy.spec.ts`, against
- * this repo's `vite.config.ts`, whose `devProxy` is the source's proxy.
+ * this repo's `vite.config.ts`, whose `devProxy` is the source's proxy. It tests
+ * this repo's config, not Prices' code, so it is in `test/`, where the Prices
+ * TypeScript project doesn't reach the config through it; its code style is
+ * still the source's.
  */
 type ProxyEntry = {
   target?: string;
@@ -194,12 +198,9 @@ describe('devProxy', () => {
     }
   });
 
-  // Tested here and not through the config, as the source's spec explains:
-  // `loadEnv` reads `.env.local` and `.env.development` from disk as well as
-  // `process.env`, and they are gitignored, so through the config the assertion
-  // would depend on
-  // whether the machine running it has set up a dev proxy. `devProxy` reads no
-  // file.
+  // Only `devProxy` has a branch without a target: the config always hands it
+  // one, `DEFAULT_DEV_API_PROXY_TARGET` when the setting is unset or empty (the
+  // describe above), so the config can't reach this case.
   it('proxies nothing when no target is set', () => {
     expect(devProxy(undefined, 'test-key-must-not-leak')).toBeUndefined();
     expect(devProxy('', 'test-key-must-not-leak')).toBeUndefined();

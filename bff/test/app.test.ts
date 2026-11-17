@@ -1,4 +1,3 @@
-// @vitest-environment node
 import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { createHub, PENDING_TTL_SECONDS, SESSION_TTL_SECONDS } from "../src/app.ts";
@@ -28,7 +27,10 @@ const cookieLine = (name: string, path: string, maxAge: number, secure = false) 
     `^${name}=${TOKEN}; Path=${path}; Max-Age=${maxAge}; HttpOnly; ${secure ? "Secure; " : ""}SameSite=Lax$`,
   );
 
-/** Every status the hub answered in this file, for the last test. */
+/**
+ * Every status the hub answered in the running test. After each test none may be 403 or 404: the
+ * production CDN turns those into another page.
+ */
 const statuses: number[] = [];
 
 type Hub = ReturnType<typeof createHub>;
@@ -133,6 +135,8 @@ beforeEach(() => {
 });
 afterEach(() => {
   vi.restoreAllMocks();
+  const answered = statuses.splice(0);
+  expect(answered.filter((status) => status === 403 || status === 404)).toEqual([]);
 });
 
 describe("the settings", () => {
@@ -257,6 +261,13 @@ describe("the hub's sign-in", () => {
     const again = await new Browser(createHub(SETTINGS)).request("/api/hub/auth/login");
     expect(stateOf(again)).not.toBe(stateOf(login));
 
+    // `signin` may be named.
+    const named = await new Browser(createHub(SETTINGS)).request(
+      "/api/hub/auth/login?action=signin",
+    );
+    expect(named.status).toBe(303);
+    expect(new URL(locationOf(named)).pathname).toBe("/oauth2/authorize");
+
     // Anywhere but on http://localhost the cookie is `Secure`.
     const deployed = new Browser(
       createHub({ ...SETTINGS, publicOrigin: "https://sorobanscan.com" }),
@@ -268,6 +279,47 @@ describe("the hub's sign-in", () => {
     expect(there.headers.getSetCookie()).toEqual([
       expect.stringMatching(cookieLine("hub_oauth", "/api/hub/auth", 600, true)),
     ]);
+  });
+
+  // Refused, not read as a sign-in: the callback would then complete another action than the one
+  // the visitor confirmed, once there are more.
+  it("refuses an action other than signin, starting nothing", async () => {
+    const hub = startHub();
+    for (const query of [
+      "action=issue",
+      "action=",
+      "action=SIGNIN",
+      "action=signin%20",
+      "action=signin&action=issue",
+      "action=issue&action=signin",
+      "action=signin&action=signin",
+    ]) {
+      const browser = hub.browser();
+      const response = await browser.request(`/api/hub/auth/login?${query}`);
+      expect(response.status, query).toBe(400);
+      expect(await response.json(), query).toEqual({ error: "unknown_action" });
+      expect(response.headers.get("location"), query).toBeNull();
+      expect(response.headers.getSetCookie(), query).toEqual([]);
+      expect(response.headers.get("cache-control"), query).toBe("no-store");
+    }
+  });
+
+  it("answers its own failure with 500 internal, logging only the error's name and route", async () => {
+    const discord = new FakeDiscord();
+    discord.authorizeUrl = () => {
+      throw new RangeError("a message that may hold anything", {
+        cause: new Error("a cause that may hold anything"),
+      });
+    };
+    const hub = createHub(SETTINGS, { discord, now: () => NOW });
+    const response = await send(hub, "/api/hub/auth/login?state=from-the-query");
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({ error: "internal" });
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    // No sign-in was started, so no half of one is left in the browser.
+    expect(response.headers.getSetCookie()).toEqual([]);
+
+    expect(logged()).toBe("request_failed RangeError GET /api/hub/auth/login");
   });
 
   it("signs a cleared member in and lands on the dashboard", async () => {
@@ -340,30 +392,51 @@ describe("the hub's sign-in", () => {
     const browser = hub.browser();
     expectRefused(await hub.signIn(browser), "unknown");
     expect(browser.session).toBeUndefined();
+    // Its name, not its message: a message can say anything.
+    const refusedUnknown = (why: string) =>
+      `signin_refused unknown discord:${ACCOUNT_ID} ` +
+      `(Discord did not say whether the account is a member: ${why})`;
+    expect(logged()).toBe(refusedUnknown("an unexpected Error"));
 
-    // And with the real client, on every answer of Discord's that isn't a plain yes or no.
+    // And with the real client, on every answer of Discord's that isn't a plain yes or no. The
+    // log says which step failed and how, never what Discord's body held nor the token.
     const json = (body: unknown, status = 200) => () => Response.json(body, { status });
-    const answers: [string, () => Response | Error, string][] = [
-      ["a rejected token", json({ message: "401: Unauthorized", code: 0 }, 401), "unknown"],
-      ["an outage", () => new Response("", { status: 500 }), "unknown"],
-      ["a gateway's error", () => new Response("<html>", { status: 502 }), "unknown"],
-      ["a rate limit", json({ retry_after: 1 }, 429), "unknown"],
-      ["a bare 404", () => new Response("<html>Not Found</html>", { status: 404 }), "unknown"],
-      ["a 404 with another code", json({ code: 0 }, 404), "unknown"],
-      ["a 200 that doesn't parse", () => new Response("<html>", { status: 200 }), "unknown"],
-      ["a member answer without `pending`", json({ roles: [] }), "unknown"],
-      ["a `pending` that isn't a boolean", json({ pending: "no" }), "unknown"],
+    const answered = (status: number) => `Discord answered ${status} to read the membership`;
+    const noPending = `${answered(200)} without a boolean \`pending\``;
+    const unreachable = (name: string) => `could not reach Discord to read the membership (${name})`;
+    const answers: [string, () => Response | Error, string, string?][] = [
+      [
+        "a rejected token",
+        json({ message: "401: Unauthorized", code: 0 }, 401),
+        "unknown",
+        answered(401),
+      ],
+      ["an outage", () => new Response("", { status: 500 }), "unknown", answered(500)],
+      ["a gateway's error", () => new Response("<html>", { status: 502 }), "unknown", answered(502)],
+      ["a rate limit", json({ retry_after: 1 }, 429), "unknown", answered(429)],
+      [
+        "a bare 404",
+        () => new Response("<html>Not Found</html>", { status: 404 }),
+        "unknown",
+        answered(404),
+      ],
+      ["a 404 with another code", json({ code: 0 }, 404), "unknown", answered(404)],
+      ["a 200 that doesn't parse", () => new Response("<html>"), "unknown", noPending],
+      ["a member answer without `pending`", json({ roles: [] }), "unknown", noPending],
+      ["a `pending` that isn't a boolean", json({ pending: "no" }), "unknown", noPending],
       [
         "a timeout",
         () => new DOMException("The operation was aborted due to timeout", "TimeoutError"),
         "unknown",
+        unreachable("TimeoutError"),
       ],
-      ["no answer", () => new TypeError("fetch failed"), "unknown"],
+      ["no answer", () => new TypeError("fetch failed"), "unknown", unreachable("TypeError")],
       ["Unknown Member", json({ code: 10007, message: "Unknown Member" }, 404), "not_member"],
       ["Unknown Guild", json({ code: 10004, message: "Unknown Guild" }, 404), "not_member"],
       ["a member still in screening", json({ pending: true, roles: [] }), "pending_rules"],
     ];
-    for (const [name, answer, reason] of answers) {
+    for (const [name, answer, reason, why] of answers) {
+      vi.clearAllMocks();
       const { fetch } = discordApi(answer);
       const real = new Browser(
         createHub(SETTINGS, { discord: httpDiscord(SETTINGS, fetch), now: () => NOW }),
@@ -372,6 +445,11 @@ describe("the hub's sign-in", () => {
       const back = await callback(real, { code: "the-code", state });
       expect(locationOf(back), name).toBe(`/api/login?signin=${reason}`);
       expect(real.session, name).toBeUndefined();
+      if (why !== undefined) expect(logged(), name).toBe(refusedUnknown(why));
+      for (const held of ["Unauthorized", "<html>", "retry_after", "aborted", "fetch failed"]) {
+        expect(logged(), name).not.toContain(held);
+      }
+      expect(logged(), name).not.toContain("the-access-token");
     }
   });
 
@@ -644,8 +722,9 @@ describe("the hub's session", () => {
     }
   });
 
-  it("never answers 403 or 404 for its own decisions", async () => {
-    // What it doesn't serve, too: an unknown path, or a route with another method.
+  // Every test's answers are checked for 403 and 404 after it (`afterEach` above); this one is for
+  // what the hub doesn't serve: an unknown path, or a route with another method.
+  it("never answers 403 or 404 for what it doesn't serve", async () => {
     const browser = startHub().browser();
     for (const [path, method] of [
       ["/api/hub/nothing", "GET"],
@@ -655,11 +734,10 @@ describe("the hub's session", () => {
       ["/api/hub/auth/login", "POST"],
     ] as const) {
       const response = await browser.request(path, { method });
+      // A `POST` here names the page's origin, so it is the route that is refused.
       expect(response.status, `${method} ${path}`).toBe(400);
+      expect(await response.json(), `${method} ${path}`).toEqual({ error: "unknown_route" });
     }
-    // Every case above was answered: the sweep is of all of them.
-    for (const status of [200, 204, 303, 400, 503]) expect(statuses).toContain(status);
-    expect(statuses.filter((status) => status === 403 || status === 404)).toEqual([]);
   });
 });
 
