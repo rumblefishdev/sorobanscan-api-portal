@@ -234,6 +234,12 @@ describe.each([
     await expect(started).rejects.toThrow(/HUB_SESSION_SECRET/);
     await expect(started).rejects.not.toThrow(secret);
   });
+
+  // Not only once the last required one is set: a typo is reported the first time it is there.
+  it("refuses to start with a malformed setting while the others are missing", async () => {
+    stubSettings({ ...NO_SIGN_IN, DISCORD_GUILD_ID: "Stellar" });
+    await expect(start()).rejects.toThrow(/DISCORD_GUILD_ID/);
+  });
 });
 
 // As Vitest runs Vite, the server of every `pnpm test`: with no server of its own nobody can ask

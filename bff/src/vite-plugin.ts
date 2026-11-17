@@ -4,6 +4,16 @@ import { createHub } from "./app.ts";
 import { missingSettings, readSettings, REQUIRED_SETTINGS } from "./settings.ts";
 
 /**
+ * What the dev and preview servers give in place of a setting left unset. `readSettings` has no
+ * default of its own, so only these servers fall back to a localhost origin. The port is replaced
+ * by the one the server got at the first request.
+ */
+const DEV_DEFAULTS = { HUB_PUBLIC_ORIGIN: "http://localhost:5173" };
+
+/** The required settings a developer has to give: those the servers have no default for. */
+const NEEDED = REQUIRED_SETTINGS.filter((name) => !(name in DEV_DEFAULTS));
+
+/**
  * The hub's backend on `pnpm dev` and `pnpm preview`: every request under `${base}hub/` goes to
  * {@link createHub}, so the page and its backend share one origin and the session cookie works
  * as it will in production. Nothing of it reaches the bundle: Vite runs it in the dev and preview
@@ -14,9 +24,9 @@ import { missingSettings, readSettings, REQUIRED_SETTINGS } from "./settings.ts"
  * `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET` and `HUB_SESSION_SECRET` every hub route answers
  * 503 `sign_in_not_configured` and the rest of the app runs as before; with only some of them it
  * answers the same and warns, naming the missing ones. A malformed `HUB_SESSION_SECRET`,
- * `DISCORD_GUILD_ID` or `HUB_PUBLIC_ORIGIN` stops the server from starting, naming it.
- * `HUB_PUBLIC_ORIGIN` is `http://localhost:<port>` unless set, with the port the server got,
- * which is not 5173 when that one is taken.
+ * `DISCORD_GUILD_ID` or `HUB_PUBLIC_ORIGIN` stops the server from starting, naming it, whether or
+ * not the others are set. `HUB_PUBLIC_ORIGIN` is `http://localhost:<port>` unless set, with the
+ * port the server got, which is not 5173 when that one is taken.
  */
 export function hubDevServer(): Plugin {
   return {
@@ -47,15 +57,20 @@ function mountHub(
   if (!httpServer) return;
 
   const env = loadEnv(config.mode, config.envDir, "");
-  // Read now, so a malformed setting stops the server before anyone opens the page.
-  const settings = readSettings(env, config.base);
+  const given = {
+    ...env,
+    HUB_PUBLIC_ORIGIN: env.HUB_PUBLIC_ORIGIN || DEV_DEFAULTS.HUB_PUBLIC_ORIGIN,
+  };
+  // Read now, so a malformed setting stops the server before anyone opens the page, even with
+  // the others unset.
+  const settings = readSettings(given, config.base);
   const prefix = `${config.base}hub/`;
 
   // None of the three is a dev setup without sign-in; one or two is a mistake worth a line. By
   // name only: a value is never printed.
-  const missing = missingSettings(env);
-  if (missing.length > 0 && missing.length < REQUIRED_SETTINGS.length) {
-    const needed = `${REQUIRED_SETTINGS.slice(0, -1).join(", ")} and ${REQUIRED_SETTINGS.at(-1)}`;
+  const missing = missingSettings(given);
+  if (missing.length > 0 && missing.length < NEEDED.length) {
+    const needed = `${NEEDED.slice(0, -1).join(", ")} and ${NEEDED.at(-1)}`;
     const lacking = `${missing.join(" and ")} ${missing.length === 1 ? "is" : "are"}`;
     config.logger.warn(
       `The hub's sign-in needs ${needed}; ${lacking} not set, so ${prefix}* answers 503.`,

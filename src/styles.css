@@ -41,9 +41,10 @@
   /* Measures */
   --column: 1280px;
   --gutter: 20px;
-  /* The top bar on one line: its nav's 18px padding above and below the tallest thing in it, the
-     "Browse APIs" button (10px padding twice around one 15px line at 1.55, 23.25px), and the 1px
-     line under it. Change it with `.site-header`'s rules. */
+  /* The top bar on one line: its nav's 18px padding above and below the tallest thing in it, its
+     primary button, "Log in" or "Dashboard" (`.nav-links .btn`: 10px padding twice around one
+     15px line at 1.55, 23.25px), and the 1px line under it. Change it with `.site-header`'s
+     rules. */
   --topbar-height: 80.25px;
   --section-space: 112px;
   --radius-badge: 6px;

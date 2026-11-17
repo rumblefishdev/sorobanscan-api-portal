@@ -346,6 +346,36 @@ describe("/dashboard", () => {
     expect(where).toBe("/dashboard/x402");
   });
 
+  // Only the selected tab's panel is rendered, so only that tab may name one: an
+  // `aria-controls` that points at nothing sends a screen reader nowhere.
+  it.each(["prices", "prices,x402"])(
+    "points only the selected tab at its panel, with VITE_PRODUCTS=%s",
+    async (products) => {
+      vi.stubEnv("VITE_PRODUCTS", products);
+      stubBackend(() => answer(200, SIGNED_IN));
+      renderAt("/api/dashboard");
+      const panel = await screen.findByRole("tabpanel", { name: "Prices API" });
+      const prices = screen.getByRole("tab", { name: "Prices API" });
+      const x402 = screen.getByRole("tab", { name: /^x402/ });
+      expect(prices.getAttribute("aria-controls")).toBe(panel.id);
+      expect(x402.getAttribute("aria-controls")).toBeNull();
+
+      fireEvent.click(x402);
+      const selected = screen
+        .getAllByRole("tab")
+        .filter((tab) => tab.getAttribute("aria-selected") === "true");
+      expect(selected).toHaveLength(1);
+      for (const tab of screen.getAllByRole("tab")) {
+        const controls = tab.getAttribute("aria-controls");
+        if (tab === selected[0]) {
+          expect(controls).toBe(screen.getByRole("tabpanel").id);
+        } else {
+          expect(controls, tab.textContent ?? "").toBeNull();
+        }
+      }
+    },
+  );
+
   it("opens the tab its address names", async () => {
     vi.stubEnv("VITE_PRODUCTS", "prices,x402");
     stubBackend(() => answer(200, SIGNED_IN));
@@ -373,13 +403,64 @@ describe("/dashboard", () => {
       expect(assign).toHaveBeenCalledExactlyOnceWith("/api/");
     });
 
+    // Only the backend's 204 clears the `HttpOnly` cookie. Leaving on anything else would look
+    // like a sign-out while this browser is still signed in, which on a shared machine is the one
+    // outcome the button is there to prevent.
     it.each([
       ["refuses it", () => answer(400, { error: "bad_origin" })],
+      ["fails", () => answer(500, { error: "internal" })],
+      ["answers 200, not 204", () => answer(200, {})],
       ["can't be reached", () => Promise.reject(new TypeError("fetch failed"))],
-    ])("still goes to the hub when the backend %s, where /me decides", async (_, logout) => {
+    ])("stays on the dashboard and says so when the backend %s", async (_, logout) => {
       stubBackend(() => answer(200, SIGNED_IN), logout);
       renderAt("/api/dashboard");
-      fireEvent.click(await screen.findByRole("button", { name: "Sign out" }));
+      const button = await screen.findByRole("button", { name: "Sign out" });
+      expect(screen.queryByRole("alert")).toBeNull();
+      fireEvent.click(button);
+      await settle();
+      expect(assign).not.toHaveBeenCalled();
+      expect(where).toBe("/dashboard");
+      expect(screen.getByRole("heading", { level: 1, name: "Dashboard" })).toBeTruthy();
+      expect(screen.getByRole("alert").textContent).toBe("Sign-out failed. Try again.");
+      // Open again, for the try the message asks for.
+      expect((button as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    it("signs out on a second try after a failed one", async () => {
+      const outcomes = [answer(503, {}), new Response(null, { status: 204 })];
+      const fetchMock = stubBackend(
+        () => answer(200, SIGNED_IN),
+        () => outcomes.shift() ?? answer(500, {}),
+      );
+      renderAt("/api/dashboard");
+      const button = await screen.findByRole("button", { name: "Sign out" });
+      fireEvent.click(button);
+      await settle();
+      expect(screen.getByRole("alert")).toBeTruthy();
+
+      fireEvent.click(button);
+      await settle();
+      expect(assign).toHaveBeenCalledExactlyOnceWith("/api/");
+      expect(fetchMock.mock.calls.filter(([url]) => url === "/api/hub/auth/logout")).toHaveLength(2);
+    });
+
+    it("sends one POST however often Sign out is pressed while it is in flight", async () => {
+      let finish: (response: Response) => void = () => {};
+      const fetchMock = stubBackend(
+        () => answer(200, SIGNED_IN),
+        () => new Promise<Response>((resolve) => (finish = resolve)),
+      );
+      renderAt("/api/dashboard");
+      const button = await screen.findByRole("button", { name: "Sign out" });
+      fireEvent.click(button);
+      expect((button as HTMLButtonElement).disabled).toBe(true);
+      fireEvent.click(button);
+      fireEvent.click(button);
+      await settle();
+      expect(fetchMock.mock.calls.filter(([url]) => url === "/api/hub/auth/logout")).toHaveLength(1);
+      expect(assign).not.toHaveBeenCalled();
+
+      await act(async () => finish(new Response(null, { status: 204 })));
       await settle();
       expect(assign).toHaveBeenCalledExactlyOnceWith("/api/");
     });

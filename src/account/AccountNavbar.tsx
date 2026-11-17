@@ -25,9 +25,12 @@ import { color, font, radius } from "../prices/theme/tokens";
 export function AccountNavbar({
   username,
   onSignOut,
+  signingOut = false,
 }: {
   username: string;
   onSignOut: () => void;
+  /** A sign-out is in flight: the button is shut, so a second press sends no second `POST`. */
+  signingOut?: boolean;
 }) {
   const links = [
     { label: "Dashboard", to: "/dashboard", current: true },
@@ -146,6 +149,7 @@ export function AccountNavbar({
               component="button"
               type="button"
               onClick={onSignOut}
+              disabled={signingOut}
               aria-label="Sign out"
               direction="row"
               spacing={1}
@@ -164,6 +168,7 @@ export function AccountNavbar({
                 fontWeight: 500,
                 color: color.text.tertiary,
                 "&:hover": { color: color.text.primary },
+                "&:disabled": { cursor: "progress", opacity: 0.6, color: color.text.tertiary },
               }}
             >
               <Box component="span" sx={{ display: { xs: "none", sm: "inline" } }}>

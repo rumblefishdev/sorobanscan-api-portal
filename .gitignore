@@ -3,7 +3,8 @@ dist
 .superpowers
 
 # Local settings. `DEV_API_PROXY_TARGET` and, once a keyed route is rendered, `DEV_API_KEY` go in
-# `.env.local`, which `pnpm dev` and `pnpm preview` both read. Vite also loads `.env` and
+# `.env.local`, which `pnpm dev` and `pnpm preview` both read, with the hub's sign-in settings
+# `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET` and `HUB_SESSION_SECRET`. Vite also loads `.env` and
 # `.env.[mode]` (`.env.development` for dev, `.env.production` for preview and build), so those
 # are real config files rather than local overrides. None of them belongs in the repo.
 .env

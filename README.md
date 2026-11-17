@@ -132,7 +132,9 @@ HUB_SESSION_SECRET=…      # signs the session cookie: make one with `openssl r
 Optional: `DISCORD_GUILD_ID`, the Discord server an account must be a member of (Stellar
 Developers, `897514728459468821`, by default), and `HUB_PUBLIC_ORIGIN`, the page's origin, which
 Discord's callback is under (`http://localhost:<port>` by default, with the port the server got).
-None of them starts with `VITE_`, so none reaches the bundle.
+That default is the dev and preview servers' own: the backend itself (`readSettings`) requires
+`HUB_PUBLIC_ORIGIN`, so whatever else runs it must name its origin. None of them starts with
+`VITE_`, so none reaches the bundle.
 
 The Discord application must list the callback among its redirects:
 `http://localhost:5173/api/hub/auth/callback` for `pnpm dev`, and
@@ -141,9 +143,9 @@ The Discord application must list the callback among its redirects:
 Without the three settings `/api/hub/*` answers 503 `{"error":"sign_in_not_configured"}` and
 everything else runs as before. With only one or two of them it answers the same, and the server
 warns at start, naming the ones missing. A malformed `HUB_SESSION_SECRET`, `DISCORD_GUILD_ID` or
-`HUB_PUBLIC_ORIGIN` stops the server from starting, naming the setting; when the server restarts
-itself (after a change to the config or an `.env` file), Vite logs "server restart failed" and
-keeps the old server running.
+`HUB_PUBLIC_ORIGIN` stops the server from starting, naming the setting, whether or not the others
+are set; when the server restarts itself (after a change to the config or an `.env` file), Vite
+logs "server restart failed" and keeps the old server running.
 
 Only the dev and preview servers run it: deploying it (in AWS, beside the explorer's CloudFront,
 the cutover's step 1) is a later plan.

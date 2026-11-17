@@ -5,9 +5,11 @@ import Tab from "@mui/material/Tab";
 import Tabs from "@mui/material/Tabs";
 import Typography from "@mui/material/Typography";
 import { alpha } from "@mui/material/styles";
+import { useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router";
 
 import { DashboardCard } from "../prices/landing/DashboardPanel";
+import { Callout } from "../prices/landing/LoginCard";
 import { LoginSection } from "../prices/landing/LoginSection";
 import { cardBorder } from "../prices/landing/primitives";
 import { color, font, radius } from "../prices/theme/tokens";
@@ -30,6 +32,16 @@ export function DashboardPage({ session }: { session: Session }) {
   const navigate = useNavigate();
   const enabled = enabledProducts(import.meta.env.VITE_PRODUCTS);
   const selected = enabled.find((product) => product === named) ?? enabled[0];
+  const [signingOut, setSigningOut] = useState<"idle" | "in_flight" | "failed">("idle");
+
+  // The button is shut while the `POST` is out, so one press is one sign-out. A sign-out that
+  // worked leaves the page, so the button stays shut; one that didn't keeps the dashboard and
+  // says so, since this browser is still signed in.
+  const onSignOut = async () => {
+    if (signingOut === "in_flight") return;
+    setSigningOut("in_flight");
+    if (!(await signOut())) setSigningOut("failed");
+  };
 
   const head = (
     <>
@@ -56,7 +68,11 @@ export function DashboardPage({ session }: { session: Session }) {
   return (
     <>
       {head}
-      <AccountNavbar username={session.username} onSignOut={() => void signOut()} />
+      <AccountNavbar
+        username={session.username}
+        onSignOut={() => void onSignOut()}
+        signingOut={signingOut === "in_flight"}
+      />
       <Box
         component="main"
         sx={{
@@ -84,6 +100,15 @@ export function DashboardPage({ session }: { session: Session }) {
         />
         <Container sx={{ position: "relative" }}>
           <Stack spacing={3}>
+            {/* Under the bar whose button it answers; `alert`, so a screen reader says it when
+                it appears. */}
+            {signingOut === "failed" && (
+              <Box role="alert">
+                <Callout variant="error">
+                  <p>Sign-out failed. Try again.</p>
+                </Callout>
+              </Box>
+            )}
             <Stack spacing={1}>
               <Typography variant="h4" component="h1" color="text.primary">
                 Dashboard
@@ -96,8 +121,9 @@ export function DashboardPage({ session }: { session: Session }) {
             <Tabs
               value={selected ?? false}
               onChange={(_, product: Product) => {
-                // A shut tab is focusable, so a screen reader finds "Coming soon", but it opens
-                // nothing.
+                // A click on a shut tab opens nothing. Tab and the arrow keys don't reach it (MUI
+                // gives an unselected tab `tabIndex=-1` and its arrow keys skip `aria-disabled`
+                // ones), but a screen reader's browse mode still reads its "Coming soon".
                 if (enabled.includes(product)) {
                   navigate(`/dashboard/${product}`, { replace: true });
                 }
@@ -116,7 +142,8 @@ export function DashboardPage({ session }: { session: Session }) {
                     key={product}
                     value={product}
                     id={tabId(product)}
-                    aria-controls={panelId(product)}
+                    // Only the selected tab's panel is rendered; the others would point at nothing.
+                    aria-controls={product === selected ? panelId(product) : undefined}
                     aria-disabled={open ? undefined : true}
                     disableRipple={!open}
                     label={

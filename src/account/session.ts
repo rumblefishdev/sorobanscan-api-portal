@@ -70,16 +70,18 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
 /**
- * Sign out: `POST hub/auth/logout`, then the hub's landing page (`BASE_URL`), as a full load, so
- * every tree there asks `/me` afresh. A sign-out the backend refused or never got still goes:
- * the landing page's next `/me` says who is signed in, and its top bar offers "Log in" or
- * "Dashboard" from that answer.
+ * Sign out: `POST hub/auth/logout`. Only its 204 clears the session cookie, and only then does the
+ * browser go to the hub's landing page (`BASE_URL`), as a full load, so every tree there asks
+ * `/me` afresh; `true`. Any other answer, or none, leaves this browser signed in, so the page
+ * stays where it is and says so: `false`.
  */
-export async function signOut(): Promise<void> {
+export async function signOut(): Promise<boolean> {
   try {
-    await fetch(LOGOUT_URL, { method: "POST", credentials: "same-origin" });
+    const response = await fetch(LOGOUT_URL, { method: "POST", credentials: "same-origin" });
+    if (response.status !== 204) return false;
   } catch {
-    // The landing page's `/me` decides; see above.
+    return false;
   }
   location.assign(import.meta.env.BASE_URL);
+  return true;
 }

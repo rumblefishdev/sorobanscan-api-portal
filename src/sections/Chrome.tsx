@@ -5,7 +5,8 @@ import { useSignedIn } from "../session";
 
 export function TopBar() {
   // "Log in" while the backend is asked too, the common case. One link either way, the same
-  // button, so the bar doesn't move when it turns into "Dashboard".
+  // button, so the bar keeps its height when it turns into "Dashboard"; only the button widens,
+  // by about 30 px for the longer word.
   const signedIn = useSignedIn();
   return (
     <header className="site-header">

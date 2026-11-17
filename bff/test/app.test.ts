@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { createHub, PENDING_TTL_SECONDS, SESSION_TTL_SECONDS } from "../src/app.ts";
 import { httpDiscord } from "../src/discord.ts";
-import { readSettings, type HubSettings } from "../src/settings.ts";
+import { missingSettings, readSettings, type HubSettings } from "../src/settings.ts";
 import { tokens } from "../src/tokens.ts";
 import { ACCOUNT_ID, BOTH_SCOPES, FakeDiscord } from "./fake-discord.ts";
 
@@ -144,9 +144,10 @@ describe("the settings", () => {
     DISCORD_CLIENT_ID: "1234567890",
     DISCORD_CLIENT_SECRET: "the-client-secret",
     HUB_SESSION_SECRET: Buffer.alloc(32, 9).toString("base64"),
+    HUB_PUBLIC_ORIGIN: PUBLIC_ORIGIN,
   };
 
-  it("are the three required ones, with Stellar Developers and localhost:5173 by default", () => {
+  it("are the four required ones, with Stellar Developers by default", () => {
     expect(readSettings(ENV, "/api/")).toEqual(SETTINGS);
     expect(
       readSettings(
@@ -166,12 +167,36 @@ describe("the settings", () => {
     );
   });
 
-  it("are missing without any one of the three, or with one empty", () => {
+  // The public origin too: a server other than the dev server (which gives its own) must name
+  // it, or Discord would be sent back to a localhost no browser of the site's is on.
+  it("are missing without any one of the four, or with one empty, and say which", () => {
     for (const name of Object.keys(ENV)) {
       expect(readSettings({ ...ENV, [name]: undefined }, "/api/"), name).toBeUndefined();
       expect(readSettings({ ...ENV, [name]: "" }, "/api/"), name).toBeUndefined();
+      expect(missingSettings({ ...ENV, [name]: undefined }), name).toEqual([name]);
+      expect(missingSettings({ ...ENV, [name]: "" }), name).toEqual([name]);
     }
     expect(readSettings({}, "/api/")).toBeUndefined();
+    expect(missingSettings({})).toEqual(Object.keys(ENV));
+    expect(missingSettings(ENV)).toEqual([]);
+  });
+
+  // Checked before "missing": a typo in one setting stops the server even while another is unset,
+  // not only once the last one is filled in.
+  it("refuse a malformed one even when others are missing", () => {
+    for (const [malformed, named] of [
+      [{ HUB_SESSION_SECRET: "too-short" }, /HUB_SESSION_SECRET/],
+      [{ DISCORD_GUILD_ID: "Stellar" }, /DISCORD_GUILD_ID/],
+      [{ HUB_PUBLIC_ORIGIN: "localhost:5173" }, /HUB_PUBLIC_ORIGIN/],
+    ] as const) {
+      for (const absent of Object.keys(ENV).filter((name) => !(name in malformed))) {
+        expect(
+          () => readSettings({ ...ENV, [absent]: undefined, ...malformed }, "/api/"),
+          `${Object.keys(malformed)[0]} without ${absent}`,
+        ).toThrow(named);
+      }
+      expect(() => readSettings(malformed, "/api/"), Object.keys(malformed)[0]).toThrow(named);
+    }
   });
 
   it("refuse a session secret that isn't base64 of 32 bytes or more, without repeating it", () => {
