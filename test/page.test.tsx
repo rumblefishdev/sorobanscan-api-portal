@@ -72,6 +72,52 @@ it("sends each use case to its product", () => {
   ]);
 });
 
+it("has every section of the design, in its order", () => {
+  renderAt("/api/");
+  const titles = screen.getAllByRole("heading", { level: 2 }).map((h) => h.textContent);
+  expect(titles).toEqual([
+    "Three APIs. One Stellar stack.",
+    "Start from what you are building",
+    "Read. Pay. Verify.",
+    "The explorer’s index, as an API",
+    "Infrastructure from the Soroban Scan team",
+    "Common questions",
+    "Build on Stellar with fewer moving parts",
+  ]);
+});
+
+it("points every in-page link at something on the page", () => {
+  renderAt("/api/");
+  const targets = [...document.querySelectorAll('a[href^="#"]')].map((a) => a.getAttribute("href")!.slice(1));
+  expect(targets.length).toBeGreaterThan(0);
+  for (const id of targets) expect(document.getElementById(id), `#${id}`).not.toBeNull();
+});
+
+it("keeps the design's placeholders", () => {
+  renderAt("/api/");
+  expect(screen.getByText("[ACCESS MODEL: API key, x402 pay-per-call, or both]")).toBeTruthy();
+  expect(document.body.textContent).toContain("[LEDGER]");
+  expect(document.body.textContent).toContain("[TX_HASH]");
+});
+
+it("answers the four questions", () => {
+  renderAt("/api/");
+  const faq = document.getElementById("faq")!;
+  for (const q of [
+    "Do I need a separate key for each API?", "Can I use the APIs together?",
+    "Mainnet or testnet?", "Can AI agents use these APIs?",
+  ]) expect(within(faq).getByText(q).closest("details")).not.toBeNull();
+});
+
+it("links out safely and to no host but GitHub", () => {
+  renderAt("/api/");
+  for (const a of document.querySelectorAll("a")) {
+    const href = a.getAttribute("href")!;
+    if (/^https?:/.test(href)) expect(href).toBe("https://github.com/rumblefishdev/stellar-x402");
+    if (a.getAttribute("target") === "_blank") expect(a.getAttribute("rel")).toBe("noopener noreferrer");
+  }
+});
+
 it("has the design's footer", () => {
   renderAt("/api/");
   const footer = screen.getByRole("contentinfo");

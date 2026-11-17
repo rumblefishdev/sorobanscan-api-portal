@@ -1,7 +1,12 @@
 import { Route, Routes } from "react-router";
+import { BuiltBy } from "./sections/BuiltBy";
 import { Footer, TopBar } from "./sections/Chrome";
+import { Closing } from "./sections/Closing";
+import { Faq } from "./sections/Faq";
 import { Hero } from "./sections/Hero";
+import { HowTheyConnect } from "./sections/HowTheyConnect";
 import { Products } from "./sections/Products";
+import { SorobanScanApi } from "./sections/SorobanScanApi";
 import { WhichApi } from "./sections/WhichApi";
 
 /** The hub: one document, its sections in the order the design has them. */
@@ -13,6 +18,11 @@ function HubPage() {
         <Hero />
         <Products />
         <WhichApi />
+        <HowTheyConnect />
+        <SorobanScanApi />
+        <BuiltBy />
+        <Faq />
+        <Closing />
       </main>
       <Footer />
     </>
