@@ -202,14 +202,21 @@ nothing else.
 
 ### The page
 
-- `/api/login`: one card in the hub's style, "Sign in with Discord", who may sign in (Stellar
+- `/api/login` and `/api/dashboard` look like the Prices portal's sign-in and dashboard (akot,
+  2026-11-17, from a screenshot of the Prices dashboard): the Prices theme and its components
+  (`LoginCard`, `Callout`, the dashboard panels), not the hub's style. They are a third tree in
+  the boot, beside the hub and the Prices pages.
+- `/api/login`: the Prices login card, "Sign in with Discord", who may sign in (Stellar
   Developers members who have cleared screening), the refusal reasons in words.
-- `/api/dashboard`: redirects to the first enabled product's tab; a tab per enabled product; each
-  tab shows its key state, "Get API Key" when there is none, show / copy, revoke after a second
-  click, and its `details`. The Prices tab reproduces what the Prices portal's dashboard shows
-  today. Signed out, the dashboard sends the browser to `/login`.
-- The top bar gains "Log in" (signed out) or the username, "Dashboard" and "Log out" (signed in).
-  Its section links point at the hub (`/api/#products`), not at the current page.
+- `/api/dashboard`: a navbar as the Prices dashboard's (Dashboard, Quick start, OpenAPI Docs,
+  the Discord username, Sign out); tabs "Prices API" and "x402", x402 marked "Coming soon" and
+  inert while it is off (decision 5); each tab shows its key state, "Get API Key" when there is
+  none, show / copy, revoke after a second click, and its `details`. The Prices tab reproduces
+  what the Prices portal's dashboard shows today (key card, monthly usage, rate limit). Signed
+  out, the dashboard sends the browser to `/login`.
+- The hub's top bar: "Log in" in place of "Browse APIs" (akot, 2026-11-17) while signed out,
+  "Dashboard" while signed in. Its section links point at the hub (`/api/#products`), not at the
+  current page.
 - A build switch per product (`VITE_PRODUCTS=prices` now, `prices,x402` when x402 opens) turns a
   product's tab, its hub tile's "Live" and the "N APIs live" count on and off. Everything else
   on the hub keeps the design's text (decision 8).
