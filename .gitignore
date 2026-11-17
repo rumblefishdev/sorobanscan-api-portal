@@ -2,8 +2,11 @@ node_modules
 dist
 .superpowers
 
-# Local settings. Vite loads `.env.development` by mode, so it is a real config file rather than a
-# local override, and it holds `DEV_API_PROXY_TARGET` and, once a keyed route is rendered,
-# `DEV_API_KEY`. Neither belongs in the repo.
+# Local settings. `DEV_API_PROXY_TARGET` and, once a keyed route is rendered, `DEV_API_KEY` go in
+# `.env.local`, which `pnpm dev` and `pnpm preview` both read. Vite also loads `.env` and
+# `.env.[mode]` (`.env.development` for dev, `.env.production` for preview and build), so those
+# are real config files rather than local overrides. None of them belongs in the repo.
+.env
 .env*.local
 .env.development
+.env.production

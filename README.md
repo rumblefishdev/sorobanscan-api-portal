@@ -79,17 +79,20 @@ server's proxy answers.
 `pnpm dev` and `pnpm preview` send the backend's paths (`/api/auth`, `/api/key`, `/api/usage`,
 `/api/config`, `/api/api-docs-json`, `/v1`, `/health`, `/api-docs-json`) to Prices' production
 API, `https://prices-api.sorobanscan.com`, so the browser sees one origin and the Prices portal
-works out of the box, "Get API Key" included. Signing in from there goes to Discord and comes
-back to production, never to localhost.
+shows what production shows. "Get API Key" opens Discord, but the round trip ends on production
+and does not complete here.
 
-`DEV_API_PROXY_TARGET` points them at another backend instead. It goes in the environment or in
-`.env.development`, which git ignores:
+`DEV_API_PROXY_TARGET` points them at another backend instead. Put it in `.env.local`, which
+both commands read and git ignores, or in the environment of each command:
 
 ```sh
-DEV_API_PROXY_TARGET=http://localhost:8080 pnpm dev
+echo "DEV_API_PROXY_TARGET=http://localhost:8080" >> .env.local
 ```
 
-`DEV_API_KEY`, when set, goes on `/v1` alone as `x-api-key`. Neither setting starts with
+Not in `.env.development`: `pnpm preview` runs in mode `production` and never reads it, so it
+would go to production with no sign of the switch.
+
+`DEV_API_KEY`, set the same way, goes on `/v1` alone as `x-api-key`. Neither setting starts with
 `VITE_`, so neither reaches the bundle.
 
 Signing in locally needs Prices' backend run locally, as its own README says

@@ -142,8 +142,8 @@ describe('dev proxy', () => {
 
 describe('dev proxy without DEV_API_PROXY_TARGET', () => {
   // Empty in `process.env`, which wins over the `.env` files, so a local
-  // `.env.development` cannot set a target here; the config reads an empty
-  // setting as an unset one.
+  // `.env.local` or `.env.development` cannot set a target here; the config
+  // reads an empty setting as an unset one.
   beforeEach(() => {
     vi.stubEnv('DEV_API_PROXY_TARGET', '');
     vi.stubEnv('DEV_API_KEY', '');
@@ -156,8 +156,8 @@ describe('dev proxy without DEV_API_PROXY_TARGET', () => {
     const { server, preview } = resolve();
     const { key, entry } = backendRule(server?.proxy);
 
-    // `pnpm dev` alone shows the Prices portal working, "Get API Key"
-    // included: `/api/config` reaches a backend rather than Vite.
+    // `pnpm dev` alone shows the Prices portal as production does:
+    // `/api/config` reaches a backend rather than Vite.
     expect(new RegExp(key).test('/api/config'), key).toBe(true);
     expect(entry?.target).toBe('https://prices-api.sorobanscan.com');
     expect(server?.proxy?.['/v1']?.target).toBe(
@@ -195,8 +195,9 @@ describe('devProxy', () => {
   });
 
   // Tested here and not through the config, as the source's spec explains:
-  // `loadEnv` reads `.env.development` from disk as well as `process.env`, and
-  // that file is gitignored, so through the config the assertion would depend on
+  // `loadEnv` reads `.env.local` and `.env.development` from disk as well as
+  // `process.env`, and they are gitignored, so through the config the assertion
+  // would depend on
   // whether the machine running it has set up a dev proxy. `devProxy` reads no
   // file.
   it('proxies nothing when no target is set', () => {

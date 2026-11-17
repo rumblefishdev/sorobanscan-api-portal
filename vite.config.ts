@@ -73,10 +73,13 @@ const KEYED_PATHS: readonly string[] = ["/v1"];
 
 /**
  * The target when `DEV_API_PROXY_TARGET` is unset or empty: Prices' public production API, so
- * `pnpm dev` alone shows the Prices portal working, "Get API Key" included (akot, 2026-11-17).
- * stellar-prices-api has no default and runs against nothing. Signing in through it lands on
- * production, not here (see `PROXIED_PATHS`). For a local backend, set the variable instead, e.g.
- * `DEV_API_PROXY_TARGET=http://localhost:8080` for `cargo run --bin serve`, whose port is 8080.
+ * `pnpm dev` alone shows the Prices portal as production does (akot, 2026-11-17). "Get API Key"
+ * opens Discord, but the round trip ends on production and does not complete here (see
+ * `PROXIED_PATHS`). stellar-prices-api has no default and runs against nothing. For a local
+ * backend, set the variable instead, in `.env.local`, which `pnpm dev` and `pnpm preview` both
+ * read, or in the environment: e.g. `DEV_API_PROXY_TARGET=http://localhost:8080` for
+ * `cargo run --bin serve`, whose port is 8080. Not in `.env.development`, which `pnpm preview`
+ * (mode `production`) never reads, so it would go to production with no sign of the switch.
  */
 const DEFAULT_DEV_API_PROXY_TARGET = "https://prices-api.sorobanscan.com";
 
