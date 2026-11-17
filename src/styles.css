@@ -41,6 +41,10 @@
   /* Measures */
   --column: 1280px;
   --gutter: 20px;
+  /* The top bar on one line: its nav's 18px padding above and below the tallest thing in it, the
+     "Browse APIs" button (10px padding twice around one 15px line at 1.55, 23.25px), and the 1px
+     line under it. Change it with `.site-header`'s rules. */
+  --topbar-height: 80.25px;
   --section-space: 112px;
   --radius-badge: 6px;
   --radius-mark: 8px;
@@ -228,6 +232,31 @@ code {
 .nav-links .btn {
   padding: 10px 18px;
   font-size: 15px;
+}
+
+/* The first screen, as the Prices portal's: the hero and the strip under it fill the viewport
+   below the top bar, the hero taking the room the strip doesn't and centring its content in it,
+   so the strip sits at the bottom. `min-height`, so a first screen taller than the viewport (a
+   phone's, or wherever the copy and the terminal stack) is never cut. `dvh` where a browser has
+   it, so a phone's collapsing address bar leaves no gap under the strip; `vh` before it. The
+   fallback is an `@supports` block, not a second declaration: with `var()` in it, a declaration
+   the browser can't use is dropped only when computed, too late to fall back to the one before. */
+.first-screen {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - var(--topbar-height));
+}
+@supports (height: 100dvh) {
+  .first-screen {
+    min-height: calc(100dvh - var(--topbar-height));
+  }
+}
+.first-screen > .hero {
+  flex: 1 0 auto;
+  align-content: center;
+  /* A flex item with auto margins isn't stretched across its container: this is the width `.wrap`
+     has in normal flow, its gutters outside it and its `max-width` still capping it. */
+  width: calc(100% - 2 * var(--gutter));
 }
 
 /* Hero */

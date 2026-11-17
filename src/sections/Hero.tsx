@@ -51,9 +51,14 @@ function Directory() {
   );
 }
 
+/**
+ * The first screen: the hero and the strip under it, in one block that the stylesheet sizes to the
+ * viewport below the top bar, as the Prices portal does, so the strip sits at the bottom of the
+ * screen rather than being cut by it. The block is a plain `div`: the two sections stay as they are.
+ */
 export function Hero() {
   return (
-    <>
+    <div className="first-screen">
       <section aria-labelledby="hero-title" className="wrap hero">
         <div className="hero-copy">
           <p className="status">2 APIs live · 1 coming soon</p>
@@ -86,6 +91,6 @@ export function Hero() {
           <span>Backed by the Stellar Community Fund</span>
         </div>
       </section>
-    </>
+    </div>
   );
 }

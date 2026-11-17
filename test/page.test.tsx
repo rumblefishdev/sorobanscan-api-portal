@@ -38,6 +38,18 @@ it("has the design's top bar", () => {
   expect(within(nav).queryByRole("link", { name: /log ?in|sign ?in|dashboard/i })).toBeNull();
 });
 
+// The stylesheet sizes the hero and its strip together to the first screen, the strip at the
+// bottom: that holds only while the two are one block in <main>, the strip its last part.
+it("keeps the hero and its strip in one block, the strip last", () => {
+  renderAt("/api/");
+  const hero = screen.getByRole("region", { name: "Stellar data and payments, as APIs" });
+  const strip = screen.getByRole("region", { name: "Highlights" });
+  expect(hero.nextElementSibling).toBe(strip);
+  expect(strip.nextElementSibling).toBeNull();
+  expect(hero.parentElement).not.toBe(screen.getByRole("main"));
+  expect(hero.parentElement?.parentElement).toBe(screen.getByRole("main"));
+});
+
 it("lists the three products in the hero's terminal", () => {
   renderAt("/api/");
   expect(screen.getByText("2 APIs live · 1 coming soon")).toBeTruthy();
