@@ -292,3 +292,35 @@ copy) is added before x402's tab opens.
 - How the Lambda is packaged and deployed, and the CloudFront policies for the behaviour.
 - The rate-limit mechanism (per-instance memory is weak on Lambda).
 - How the Prices portal's dashboard components are carried into the Prices tab.
+
+## Found in review of the local sign-in (2026-11-17), for stages 2 and 3
+
+- **Start "Get API Key" with a `POST`, not a `GET`.** `GET /api/hub/auth/login?action=issue&product=…`
+  with `prompt=none` lets any site trigger an issue for a signed-in visitor with one link: a
+  top-level navigation carries `Lax` cookies and Discord returns without a screen, which breaks
+  decision 4. A form `POST` checked against `Origin`, answering 303 to Discord.
+- **Bind the issue to the session**: `action=issue` requires a session, and the callback refuses
+  unless Discord's id equals the session's (a visitor who switched Discord accounts would
+  otherwise get a key for another account).
+- **The BFF keeps its own product allowlist** (it can't see the build's `VITE_PRODUCTS`), parsed
+  once like `action` and signed into both halves of the sign-in.
+- Refusals at the callback go to `/api/dashboard/<product>?issue=<reason>` for an issue,
+  `/api/login?signin=<reason>` for a sign-in; the account-age gate applies to issues only.
+- `/api/hub/<product>/*` answers 401 without a session (never 403 or 404); key events are logged
+  with `discord:<id>`.
+- The page's `useSession` gains a `failed` state with a timeout (a `/me` that errors must not
+  send a signed-in visitor to `/login`), before the switch.
+- Lambda: `handle()` from `hono/aws-lambda` behind a function URL (payload v2 keeps every
+  `Set-Cookie`; ALB single-value mode keeps only the first), settings required at init (no 503
+  mode), `HUB_PUBLIC_ORIGIN` required; a timeout of at least 15 s, under CloudFront's origin read
+  timeout; rotating `HUB_SESSION_SECRET` signs everyone out.
+- CloudFront `/api/hub/*`: caching disabled, all viewer headers but Host. The distribution turns
+  every origin 403/404 into the explorer's page with 200, including the function URL's own; with
+  origin access control a `POST` with a body needs `x-amz-content-sha256` from the client. Try
+  sign-out and stage 2's `POST`s through CloudFront; the page treats a non-JSON 200 from
+  `/api/hub/*` as a failure.
+- Rate limits on `/api/hub/auth/*` (a WAF rate rule or reserved concurrency).
+- At the switch, bare `/api/login` and `/api/dashboard` are still the explorer's cached `301`s in
+  some browsers: the moved Prices pages' `?from=prices` redirects (not built yet) are the way
+  back, and step 1 is verified through `/api/hub/me`, not the landing page.
+
