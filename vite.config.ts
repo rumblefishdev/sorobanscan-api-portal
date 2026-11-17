@@ -1,6 +1,7 @@
 import react from "@vitejs/plugin-react";
 import { loadEnv, type Plugin, type ProxyOptions } from "vite";
 import { defineConfig } from "vitest/config";
+import { hubDevServer } from "./bff/src/vite-plugin.ts";
 import { basePath, DEFAULT_BASE_PATH } from "./src/base-path.ts";
 
 /**
@@ -42,7 +43,8 @@ const noindexOutsideApi = (): Plugin => {
  * would swallow Vite's own `/api/@vite/…` and `/api/src/…` requests and every page, so the backend
  * is enumerated as one regex key. Adding a backend route at a NEW top-level segment means adding
  * it here — a fetch to a missing one is a Vite 404, loud and local. A segment named `prices-api`
- * would take the Prices pages, one named `hub` the shared sign-in's backend to come.
+ * would take the Prices pages, one named `hub` the hub's own backend, which `hubDevServer` serves
+ * on this server (and which answers before the proxy would see it).
  */
 const PORTAL_BACKEND_SEGMENTS = ["auth", "key", "usage", "config", "api-docs-json"];
 const PORTAL_BACKEND_PROXY = `^/api/(${PORTAL_BACKEND_SEGMENTS.join("|")})(/|\\?|$)`;
@@ -131,7 +133,9 @@ export default defineConfig(({ mode }) => {
       // render the "could not reach the portal backend" branch.
       proxy,
     },
-    plugins: [react(), noindexOutsideApi()],
+    // `hubDevServer` serves the hub's backend at `${base}hub/` on `pnpm dev` and `pnpm preview`,
+    // with its Discord settings read there, in Node; `vite build` leaves it out.
+    plugins: [react(), noindexOutsideApi(), hubDevServer()],
     test: {
       // Vitest gives `import.meta.env.BASE_URL` as `/` whatever `base` is. The tests see the
       // default prefix, which the boot module and the Prices paths are derived from, and not the

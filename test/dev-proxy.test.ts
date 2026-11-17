@@ -135,7 +135,8 @@ describe('dev proxy', () => {
       '/api/login',
       '/api/dashboard',
       '/api/privacy-policy',
-      // The shared sign-in's backend, to come at `/api/hub/*`.
+      // The hub's own backend at `/api/hub/*`, which the dev server serves
+      // itself (`bff/src/vite-plugin.ts`).
       '/api/hub/',
       '/api/hub/auth/login',
     ]) {

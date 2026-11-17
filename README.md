@@ -26,15 +26,16 @@ Node 22.13 or later, and pnpm 11 (Corepack takes the version from `package.json`
 
 ```sh
 pnpm install
-pnpm dev        # the hub under /api/, the Prices portal under /api/prices-api/
-pnpm test       # both trees' tests, and builds that check every file the page asks for
-pnpm typecheck  # the hub, then the Prices portal with its own options
+pnpm dev        # the hub at /api/, the Prices portal at /api/prices-api/, the backend at /api/hub/
+pnpm test       # the page's and the backend's tests, and builds that check the page's files
+pnpm typecheck  # the hub, the Prices portal with its own options, then the backend
 pnpm build      # the bundle in dist/
-pnpm preview    # dist/ served locally, under the same prefix and with the same proxy as dev
+pnpm preview    # dist/ served locally, under the same prefix, with dev's proxy and backend
 ```
 
 Both `pnpm dev` and `pnpm preview` send the Prices backend's paths to Prices' production API
-(see "The Prices portal" below), so the browser sees one origin.
+(see "The Prices portal" below) and serve the hub's own backend themselves (see "The hub's
+backend"), so the browser sees one origin.
 
 ## The prefix: `VITE_BASE_PATH`
 
@@ -104,6 +105,40 @@ Signing in locally needs Prices' backend run locally, as its own README says
 --bin serve`, on port 8080), with `DEV_API_PROXY_TARGET=http://localhost:8080`. Its
 `redirect_uri` and the Discord registration must name this dev server,
 `http://localhost:5173/api/auth/callback`, not Prices' port 4200.
+
+## The hub's backend
+
+The hub's own sign-in, the backend for the hub's pages (BFF), is in `bff/`: a Hono app that signs
+a member of Stellar Developers who has cleared Membership Screening in with Discord and keeps the
+session in an `HttpOnly` cookie, under `/api/hub/` (`auth/login`, `auth/callback`, `me`,
+`auth/logout`). Its design is the shared sign-in spec's "The session"; the build steps are in
+[its plan](docs/superpowers/plans/2026-11-17-hub-sign-in-local-plan.md). `pnpm dev` and
+`pnpm preview` serve it themselves, through a Vite plugin (`bff/src/vite-plugin.ts`), on the
+page's own origin; `bff/test` runs in Node.
+
+Its settings go in `.env.local`, which both commands read and git ignores. Not in
+`.env.development.local`: `pnpm preview` runs in mode `production` and never reads that one.
+
+```sh
+DISCORD_CLIENT_ID=…       # the hub's Discord application
+DISCORD_CLIENT_SECRET=…   # and its secret
+HUB_SESSION_SECRET=…      # signs the session cookie: make one with `openssl rand -base64 32`
+```
+
+Optional: `DISCORD_GUILD_ID`, the Discord server an account must be a member of (Stellar
+Developers, `897514728459468821`, by default), and `HUB_PUBLIC_ORIGIN`, the page's origin, which
+Discord's callback is under (`http://localhost:<port>` by default, with the port the server got).
+None of them starts with `VITE_`, so none reaches the bundle.
+
+The Discord application must list the callback among its redirects:
+`http://localhost:5173/api/hub/auth/callback` for `pnpm dev`, and
+`http://localhost:4173/api/hub/auth/callback` to sign in on `pnpm preview` too.
+
+Without the three settings `/api/hub/*` answers 503 `{"error":"sign_in_not_configured"}` and
+everything else runs as before. A setting present but malformed stops the server, naming it.
+
+Only the dev and preview servers run it: deploying it (in AWS, beside the explorer's CloudFront,
+the cutover's step 1) is a later plan.
 
 ## Putting it on production
 
