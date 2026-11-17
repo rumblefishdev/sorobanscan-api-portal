@@ -19,5 +19,6 @@
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true
   },
-  "include": ["src", "test", "vite.config.ts"]
+  "include": ["src", "test", "vite.config.ts"],
+  "exclude": ["src/prices"]
 }

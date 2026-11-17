@@ -1,0 +1,75 @@
+/*
+ * Self-hosted webfonts — the design system's three families, exactly the
+ * weights the Figma variables name and nothing else.
+ *
+ * Self-hosted since task 0193, whose rule was "no third-party request" from a
+ * page that renders a credential. Task 0316 relaxed that rule for the
+ * explorer's GTM and HubSpot only. A font CDN still adds a host that gets
+ * every visit and gains nothing over the committed bytes. The explorer
+ * distribution enforces no CSP (its `delivery-stack.ts`), so this rests on
+ * that choice, not on a header. The bytes are committed under
+ * `src/assets/fonts/` and Vite fingerprints them under `/api-tokens/assets/`,
+ * same origin as everything else.
+ *
+ * `font-display: swap` throughout: text renders immediately in the fallback and
+ * reflows when the face lands. The alternative (`block`) hides the hero
+ * headline for up to three seconds, which is the opposite of "a developer gets
+ * from the landing page to a working curl in under a minute".
+ *
+ * Weights are deliberately sparse — 500/600/700 for Clash Display, 500/700 for
+ * Satoshi and JetBrains Mono, ~158 KB in total. Every extra weight is a
+ * render-blocking-ish download for a face nothing on the page asks for.
+ */
+
+@font-face {
+  font-family: 'Clash Display';
+  src: url('../assets/fonts/clash-display-500.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Clash Display';
+  src: url('../assets/fonts/clash-display-600.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Clash Display';
+  src: url('../assets/fonts/clash-display-700.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Satoshi';
+  src: url('../assets/fonts/satoshi-500.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Satoshi';
+  src: url('../assets/fonts/satoshi-700.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+/*
+ * ONE file for the whole mono range, not one per weight: Google Fonts serves
+ * JetBrains Mono as a VARIABLE font, and requesting 500 and 700 separately
+ * returned the same 31 KB of bytes twice. The `font-weight: 100 800` range is
+ * the face's real `wght` axis — declaring a single weight here would make the
+ * browser synthesise bold by smearing the 500 instance, which on a monospace
+ * face showing an API key is visibly wrong.
+ */
+@font-face {
+  font-family: 'JetBrains Mono';
+  src: url('../assets/fonts/jetbrains-mono-variable.woff2') format('woff2');
+  font-weight: 100 800;
+  font-style: normal;
+  font-display: swap;
+}

@@ -26,5 +26,9 @@ const noindexOutsideApi = (): Plugin => {
 export default defineConfig(({ mode }) => ({
   base: basePath(loadEnv(mode, process.cwd(), "VITE_BASE_PATH").VITE_BASE_PATH),
   plugins: [react(), noindexOutsideApi()],
-  test: { include: ["test/**/*.test.{ts,tsx}"], environment: "jsdom" },
+  test: {
+    include: ["test/**/*.test.{ts,tsx}", "src/prices/**/*.spec.{ts,tsx}"],
+    environment: "jsdom",
+    setupFiles: ["test/setup.ts"],
+  },
 }));

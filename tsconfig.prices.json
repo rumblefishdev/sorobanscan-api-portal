@@ -1,0 +1,23 @@
+{
+  // The Prices portal, checked as stellar-prices-api checks it (its `tsconfig.base.json` with
+  // `web/portal/tsconfig.app.json` and `tsconfig.spec.json`), not with this repo's stricter
+  // `noUncheckedIndexedAccess` and `verbatimModuleSyntax`.
+  "compilerOptions": {
+    "target": "es2022",
+    "lib": ["dom", "esnext"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "types": ["vite/client", "vitest/importMeta", "node"],
+    "jsx": "react-jsx",
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "strict": true,
+    "noUnusedLocals": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "noImplicitOverride": true,
+    "isolatedModules": true,
+    "skipLibCheck": true
+  },
+  "include": ["src/prices"]
+}
