@@ -1,0 +1,376 @@
+/* The design's colours and measures (board `Main.dc.html`, 1440px, one breakpoint at 720px), named
+   as stellar-x402's portal names its own where they match. Dark only. Padding that one part of
+   the page alone uses stays in that part's rules. */
+:root {
+  /* Surfaces */
+  --bg: #212121;
+  --panel: #1b1b1b;
+  --inset: #161616;
+  --on-accent: #000000;
+  /* Text, brightest first */
+  --text: #f5f5f5;
+  --code: #e5e5e5;
+  --soft: #d4d4d4;
+  --lead: #c4c4c4;
+  --body: #b5b5b5;
+  --muted: #a3a3a3;
+  --faint: #737373;
+  --dot: #4a4a4a;
+  /* Lines */
+  --line: rgba(83, 83, 83, 0.45);
+  --ghost-line: rgba(245, 245, 245, 0.35);
+  --ghost-dash: rgba(245, 245, 245, 0.45);
+  /* Accent, and what is not out yet: dashed in the accent */
+  --accent: #fdda24;
+  --accent-wash: rgba(253, 218, 36, 0.04);
+  --accent-dash: rgba(253, 218, 36, 0.45);
+  --accent-dash-strong: rgba(253, 218, 36, 0.5);
+  --accent-line: rgba(253, 218, 36, 0.6);
+  /* Live */
+  --ok: #05df72;
+  --ok-line: rgba(5, 223, 114, 0.5);
+  --ok-glow: rgba(5, 223, 114, 0.18);
+  /* Type */
+  --display: "Space Grotesk Variable", "Space Grotesk", sans-serif;
+  --sans: "Manrope Variable", Manrope, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono Variable", "JetBrains Mono", monospace;
+  --h1-size: 60px;
+  --h2-size: 48px;
+  /* Measures */
+  --column: 1200px;
+  --gutter: 24px;
+  --section-space: 112px;
+  --radius-badge: 6px;
+  --radius-mark: 8px;
+  --radius-code: 10px;
+  --radius-row: 12px;
+  --radius-card: 16px;
+  --radius-panel: 24px;
+  --radius-pill: 9999px;
+}
+@media (max-width: 720px) {
+  :root {
+    --h1-size: 40px;
+    --h2-size: 32px;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.55;
+}
+
+a {
+  color: var(--text);
+  text-decoration: none;
+}
+a:hover {
+  color: var(--accent);
+}
+h1,
+h2,
+h3,
+p,
+pre,
+ol,
+ul {
+  margin: 0;
+}
+ol,
+ul {
+  padding: 0;
+  list-style: none;
+}
+h1,
+h2,
+h3 {
+  font-family: var(--display);
+  font-weight: 600;
+}
+h1 {
+  font-size: var(--h1-size);
+  line-height: 1.04;
+  letter-spacing: -0.02em;
+}
+h2 {
+  font-size: var(--h2-size);
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+}
+code {
+  font-family: var(--mono);
+}
+
+/* Layout */
+/* A 1200px column inside 24px gutters, as the design's: the gutters are outside the column. */
+.wrap {
+  max-width: var(--column);
+  margin: 0 auto;
+  padding-left: var(--gutter);
+  padding-right: var(--gutter);
+}
+
+/* Buttons and pills */
+.btn {
+  display: inline-block;
+  padding: 14px 26px;
+  border-radius: var(--radius-pill);
+  font-weight: 700;
+  font-size: 16px;
+}
+.btn-primary,
+.btn-primary:hover {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+.btn-ghost {
+  border: 1px solid var(--ghost-line);
+  color: var(--text);
+}
+.btn-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding-top: 8px;
+}
+.pill {
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: var(--radius-pill);
+  padding: 2px 10px;
+  white-space: nowrap;
+}
+.pill-live {
+  color: var(--ok);
+  border: 1px solid var(--ok-line);
+}
+.pill-soon {
+  color: var(--accent);
+  border: 1px solid var(--accent-line);
+}
+
+/* Top bar */
+.site-header {
+  border-bottom: 1px solid var(--line);
+}
+.site-header nav {
+  padding-top: 18px;
+  padding-bottom: 18px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.brand-mark {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-mark);
+  background: var(--accent);
+  color: var(--on-accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+}
+.brand-name {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 18px;
+  color: var(--text);
+}
+.brand-by {
+  font-size: 13px;
+  color: var(--muted);
+}
+.nav-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 24px;
+  font-size: 15px;
+}
+.nav-links a:not(.btn) {
+  color: var(--soft);
+}
+.nav-links a:not(.btn):hover {
+  color: var(--accent);
+}
+.nav-links .btn {
+  padding: 10px 18px;
+  font-size: 15px;
+}
+
+/* Hero */
+.hero {
+  padding-top: 96px;
+  padding-bottom: 72px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 56px;
+  align-items: center;
+}
+.hero-copy {
+  flex: 1 1 480px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ok);
+  font-size: 15px;
+  font-weight: 600;
+}
+.status::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-pill);
+  background: var(--ok);
+  box-shadow: 0 0 0 4px var(--ok-glow);
+}
+.hero-lead {
+  font-size: 19px;
+  color: var(--lead);
+  max-width: 560px;
+}
+
+/* The hero's `ls /api` terminal */
+.directory {
+  flex: 1 1 460px;
+  min-width: 0;
+  background: var(--inset);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+}
+.directory-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.directory-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-pill);
+  background: var(--dot);
+}
+.directory-host {
+  margin-left: 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--muted);
+}
+.directory-prompt {
+  padding: 20px 20px 8px;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--muted);
+}
+.directory-command {
+  color: var(--code);
+}
+.directory ul {
+  padding: 8px 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.directory a {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 12px;
+  border-radius: var(--radius-row);
+  background: var(--panel);
+  border: 1px solid var(--line);
+}
+.directory code {
+  flex: 0 0 auto;
+  font-size: 14px;
+  color: var(--accent);
+}
+.directory-about {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  color: var(--lead);
+}
+.directory a.soon {
+  background: none;
+  border: 1px dashed var(--accent-dash);
+}
+.directory a.soon code {
+  color: var(--soft);
+}
+.directory a.soon .directory-about {
+  color: var(--muted);
+}
+
+/* The strip under the hero */
+.highlights {
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.highlights > div {
+  padding-top: 22px;
+  padding-bottom: 22px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px 32px;
+  font-size: 15px;
+  color: var(--lead);
+}
+.highlights .built-by {
+  color: var(--muted);
+}
+.highlights strong {
+  color: var(--text);
+  font-weight: 700;
+}
+
+/* Footer */
+.site-footer {
+  border-top: 1px solid var(--line);
+}
+.site-footer > div {
+  padding-top: 28px;
+  padding-bottom: 28px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 14px;
+  color: var(--muted);
+}
+.site-footer nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+}
+.site-footer a {
+  color: var(--muted);
+}
+.site-footer a:hover {
+  color: var(--accent);
+}

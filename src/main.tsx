@@ -6,6 +6,7 @@ import { routerBasename } from "./base-path";
 import "@fontsource-variable/jetbrains-mono";
 import "@fontsource-variable/manrope";
 import "@fontsource-variable/space-grotesk";
+import "./styles.css";
 
 const root = document.getElementById("root");
 if (!root) throw new Error("index.html has no #root");
