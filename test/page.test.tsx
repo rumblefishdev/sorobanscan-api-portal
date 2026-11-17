@@ -48,6 +48,30 @@ it("lists the three products in the hero's terminal", () => {
   ] as const) expect(screen.getByRole("link", { name: new RegExp(name) }).getAttribute("href")).toBe(href);
 });
 
+it("has a card per product, linked as the design links it", () => {
+  renderAt("/api/");
+  const products = document.getElementById("products")!;
+  expect(within(products).getByRole("heading", { level: 2, name: "Three APIs. One Stellar stack." })).toBeTruthy();
+  for (const name of ["Prices API", "x402 Facilitator", "Soroban Scan API"])
+    expect(within(products).getByRole("heading", { level: 3, name })).toBeTruthy();
+  expect(within(products).getByRole("link", { name: "Explore Prices API" }).getAttribute("href")).toBe("/api/prices-api/");
+  expect(within(products).getByRole("link", { name: "Explore x402 Facilitator" }).getAttribute("href")).toBe("/api/x402-facilitator/");
+  expect(within(products).getByRole("link", { name: "See what’s coming" }).getAttribute("href")).toBe("#soroban-scan-api");
+  for (const text of ["api.sorobanscan.com/prices", "api.sorobanscan.com/x402", "api.sorobanscan.com/scan"])
+    expect(within(products).getByText(text)).toBeTruthy();
+});
+
+it("sends each use case to its product", () => {
+  renderAt("/api/");
+  const choose = document.getElementById("choose")!;
+  const hrefs = within(choose).getAllByRole("link").map((a) => a.getAttribute("href"));
+  expect(hrefs).toEqual([
+    "/api/prices-api/", "/api/prices-api/",
+    "/api/x402-facilitator/", "/api/x402-facilitator/",
+    "#soroban-scan-api",
+  ]);
+});
+
 it("has the design's footer", () => {
   renderAt("/api/");
   const footer = screen.getByRole("contentinfo");

@@ -1,6 +1,8 @@
 import { Route, Routes } from "react-router";
 import { Footer, TopBar } from "./sections/Chrome";
 import { Hero } from "./sections/Hero";
+import { Products } from "./sections/Products";
+import { WhichApi } from "./sections/WhichApi";
 
 /** The hub: one document, its sections in the order the design has them. */
 function HubPage() {
@@ -9,6 +11,8 @@ function HubPage() {
       <TopBar />
       <main id="top">
         <Hero />
+        <Products />
+        <WhichApi />
       </main>
       <Footer />
     </>

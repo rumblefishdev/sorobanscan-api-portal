@@ -126,6 +126,10 @@ code {
   border: 1px solid var(--ghost-line);
   color: var(--text);
 }
+.btn-soon {
+  border: 1px solid var(--accent);
+  color: var(--accent);
+}
 .btn-row {
   display: flex;
   flex-wrap: wrap;
@@ -146,6 +150,16 @@ code {
 .pill-soon {
   color: var(--accent);
   border: 1px solid var(--accent-line);
+}
+/* The product cards' status: a size up, and "COMING SOON" filled in the accent. */
+.pill-lg {
+  font-size: 13px;
+  padding: 3px 12px;
+}
+.pill-filled {
+  background: var(--accent);
+  color: var(--on-accent);
+  letter-spacing: 0.06em;
 }
 
 /* Top bar */
@@ -343,6 +357,173 @@ code {
   font-weight: 700;
 }
 
+/* The sections after the hero, each opening with its head (`SectionHead`) */
+.section {
+  padding-top: var(--section-space);
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+}
+.section-head {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  align-items: flex-start;
+  max-width: 760px;
+}
+.eyebrow {
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 14px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: var(--radius-badge);
+}
+.section-lead {
+  font-size: 18px;
+  color: var(--lead);
+}
+
+/* Products: a card each */
+.products {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+.product {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-card);
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.product.soon {
+  background: var(--accent-wash);
+  border: 1px dashed var(--accent-dash-strong);
+}
+.product-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+}
+.product-icon {
+  color: var(--accent);
+}
+/* The x402 card's "402", in place of an icon */
+.product-mark {
+  box-sizing: border-box;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-mark);
+  border: 1.6px solid var(--accent);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 500;
+}
+.product-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.product-category {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.product h3 {
+  font-size: 28px;
+}
+.product-intro p {
+  color: var(--body);
+}
+.product-points {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 15px;
+  color: var(--soft);
+}
+.product-points li {
+  display: flex;
+  gap: 12px;
+}
+.product-points span {
+  color: var(--accent);
+}
+.product-end {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.product-end code {
+  font-size: 13px;
+  color: var(--lead);
+  background: var(--inset);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-code);
+  padding: 10px 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.product.soon .product-end code {
+  color: var(--muted);
+}
+.product-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.product-links .btn {
+  padding: 12px 22px;
+  font-size: 15px;
+}
+
+/* "Which API?": a row per use case, each one link */
+.use-cases {
+  border-top: 1px solid var(--line);
+}
+.use-cases li {
+  border-bottom: 1px solid var(--line);
+}
+.use-cases a {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 24px;
+  padding: 24px 0;
+}
+.use-case-need {
+  flex: 1 1 420px;
+  min-width: 0;
+  font-family: var(--display);
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text);
+}
+.use-case-product {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.use-cases a.soon .use-case-product {
+  color: var(--soft);
+}
+
 /* Footer */
 .site-footer {
   border-top: 1px solid var(--line);
@@ -386,5 +567,10 @@ code {
   }
   .directory .pill {
     margin-left: auto;
+  }
+  /* Below a 368px viewport the column is narrower than the design's 320px least card width, and
+     its one card would run past the column into the right gutter: the card is held to the column. */
+  .products {
+    grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   }
 }
