@@ -48,12 +48,6 @@
   --radius-panel: 24px;
   --radius-pill: 9999px;
 }
-@media (max-width: 720px) {
-  :root {
-    --h1-size: 40px;
-    --h2-size: 32px;
-  }
-}
 
 body {
   margin: 0;
@@ -373,4 +367,24 @@ code {
 }
 .site-footer a:hover {
   color: var(--accent);
+}
+
+/* The one breakpoint, as the design's. It is last so that it overrides the rules above. */
+@media (max-width: 720px) {
+  :root {
+    --h1-size: 40px;
+    --h2-size: 32px;
+  }
+  /* On a phone a directory row has no room for its path, description and status side by side:
+     the path and the status share the first line and the description goes under them. */
+  .directory a {
+    flex-wrap: wrap;
+  }
+  .directory-about {
+    order: 1;
+    flex-basis: 100%;
+  }
+  .directory .pill {
+    margin-left: auto;
+  }
 }
