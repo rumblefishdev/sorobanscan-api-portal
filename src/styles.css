@@ -1,7 +1,9 @@
 /* The design's colours and measures (board `Main.dc.html`, 1440px, one breakpoint at 720px), named
-   as stellar-x402's portal names its own where they match. Dark only. Padding that one part of
-   the page alone uses stays in that part's rules. */
+   as stellar-x402's portal names its own where they match, except the column, which is the Prices
+   portal's (akot, 2026-11-17) and brings a breakpoint of its own at 900px. Dark only. Padding that
+   one part of the page alone uses stays in that part's rules. */
 :root {
+  color-scheme: dark;
   /* Surfaces */
   --bg: #212121;
   --panel: #1b1b1b;
@@ -37,8 +39,8 @@
   --h1-size: 60px;
   --h2-size: 48px;
   /* Measures */
-  --column: 1200px;
-  --gutter: 24px;
+  --column: 1280px;
+  --gutter: 20px;
   --section-space: 112px;
   --radius-badge: 6px;
   --radius-mark: 8px;
@@ -101,12 +103,19 @@ code {
 }
 
 /* Layout */
-/* A 1200px column inside 24px gutters, as the design's: the gutters are outside the column. */
+/* The Prices portal's column (its MUI container: at most 1440px with its gutters, 80px of them from
+   900px up and 20px below), which overrides the design's 1200px. The gutters are outside the
+   column, so a 1280px column in 80px gutters is the same 1440px box. */
 .wrap {
   max-width: var(--column);
   margin: 0 auto;
   padding-left: var(--gutter);
   padding-right: var(--gutter);
+}
+@media (min-width: 900px) {
+  :root {
+    --gutter: 80px;
+  }
 }
 
 /* Buttons and pills */
@@ -550,9 +559,10 @@ code {
 .flow-arrow {
   color: var(--faint);
 }
+/* Below a 300px viewport the column is narrower than the least card width: as `.products`. */
 .steps {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
   gap: 16px;
 }
 .step {
@@ -653,6 +663,13 @@ code {
   color: var(--code);
   overflow-x: auto;
   white-space: pre;
+  /* The panel's inner corners, so the focus ring below follows them rather than being cut. */
+  border-radius: 0 0 calc(var(--radius-card) - 1px) calc(var(--radius-card) - 1px);
+}
+/* `.preview` clips what is outside it, so the focus ring is drawn inside the `<pre>`. */
+.preview pre:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 .preview-prompt {
   color: var(--muted);
@@ -667,7 +684,7 @@ code {
 /* Built by: a card per point */
 .built {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
   gap: 16px;
 }
 .built-card {
@@ -777,7 +794,7 @@ code {
   color: var(--accent);
 }
 
-/* The one breakpoint, as the design's. It is last so that it overrides the rules above. */
+/* The design's breakpoint. It is last so that it overrides the rules above. */
 @media (max-width: 720px) {
   :root {
     --h1-size: 40px;
@@ -795,12 +812,12 @@ code {
   .directory .pill {
     margin-left: auto;
   }
-  /* Below a 368px viewport the column is narrower than the design's 320px least card width, and
+  /* Below a 360px viewport the column is narrower than the design's 320px least card width, and
      its one card would run past the column into the right gutter: the card is held to the column. */
   .products {
     grid-template-columns: repeat(auto-fit, minmax(min(320px, 100%), 1fr));
   }
-  /* Below a 369px viewport the preview's bar has no room for its name and note side by side, and
+  /* Below a 361px viewport the preview's bar has no room for its name and note side by side, and
      each would break inside itself: the note goes under the name instead. */
   .preview-bar {
     flex-wrap: wrap;

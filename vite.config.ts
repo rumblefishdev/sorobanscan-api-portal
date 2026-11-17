@@ -1,5 +1,5 @@
 import react from "@vitejs/plugin-react";
-import type { Plugin } from "vite";
+import { loadEnv, type Plugin } from "vite";
 import { defineConfig } from "vitest/config";
 import { basePath, DEFAULT_BASE_PATH } from "./src/base-path.ts";
 
@@ -21,8 +21,10 @@ const noindexOutsideApi = (): Plugin => {
   };
 };
 
-export default defineConfig({
-  base: basePath(process.env.VITE_BASE_PATH),
+// `VITE_BASE_PATH` is read as Vite reads its other settings: from the `.env` files of the mode
+// built, and from `process.env`, which wins over them.
+export default defineConfig(({ mode }) => ({
+  base: basePath(loadEnv(mode, process.cwd(), "VITE_BASE_PATH").VITE_BASE_PATH),
   plugins: [react(), noindexOutsideApi()],
   test: { include: ["test/**/*.test.{ts,tsx}"], environment: "jsdom" },
-});
+}));

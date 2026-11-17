@@ -1,4 +1,6 @@
 // @vitest-environment node
+import { rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "vite";
 import { beforeAll, describe, expect, it, vi } from "vitest";
@@ -6,9 +8,12 @@ import { basePath, routerBasename } from "../src/base-path";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
-/** Builds the page; without `base`, Vite takes the one `vite.config.ts` gives. */
-const built = async (base?: string) => {
-  const result = await build({ root, base, logLevel: "silent", build: { write: false } });
+/**
+ * Builds the page; without `base`, Vite takes the one `vite.config.ts` gives. `mode` picks the
+ * `.env.[mode]` file the config reads, as `vite build --mode` does; Vite's own is `production`.
+ */
+const built = async (base?: string, mode?: string) => {
+  const result = await build({ root, base, mode, logLevel: "silent", build: { write: false } });
   return (Array.isArray(result) ? result : [result]).flatMap((part) =>
     "output" in part ? part.output : [],
   );
@@ -35,9 +40,14 @@ describe("basePath", () => {
   it("takes a prefix with both slashes", () => {
     expect(basePath("/api/next/")).toBe("/api/next/");
   });
-  it.each(["api/next/", "/api/next", "api"])("refuses %s, naming the setting", (value) => {
-    expect(() => basePath(value)).toThrow(/VITE_BASE_PATH/);
-  });
+  // `//api/next/` (and `/\api/next/`, which a browser reads the same) would make the page ask
+  // another host, `api`, for its files.
+  it.each(["api/next/", "/api/next", "api", "//api/next/", "/\\api/next/"])(
+    "refuses %s, naming the setting",
+    (value) => {
+      expect(() => basePath(value)).toThrow(/VITE_BASE_PATH/);
+    },
+  );
   it("gives the router the prefix without its last slash", () => {
     expect(routerBasename("/api/")).toBe("/api");
     expect(routerBasename("/api/next/")).toBe("/api/next");
@@ -93,5 +103,30 @@ describe.each([
 
   it("is noindex only away from /api/", () => {
     expect(isNoindex(page)).toBe(base !== "/api/");
+  });
+});
+
+// `vite build` reads `.env` files, and a setting given in one counts as it does in `process.env`.
+describe("the page built through the config with VITE_BASE_PATH in a .env file", () => {
+  const mode = "base-path-test";
+  let page: string;
+  beforeAll(async () => {
+    const envFile = join(root, `.env.${mode}`);
+    writeFileSync(envFile, "VITE_BASE_PATH=/api/from-env-file/\n");
+    vi.stubEnv("VITE_BASE_PATH", undefined);
+    try {
+      page = indexHtml(await built(undefined, mode));
+    } finally {
+      vi.unstubAllEnvs();
+      rmSync(envFile);
+    }
+  });
+
+  it("asks for every file under the prefix the file gives", () => {
+    expectEveryFileUnder(page, "/api/from-env-file/");
+  });
+
+  it("is noindex", () => {
+    expect(isNoindex(page)).toBe(true);
   });
 });

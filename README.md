@@ -29,9 +29,11 @@ pnpm preview    # dist/ served locally, under the same prefix
 ## The prefix: `VITE_BASE_PATH`
 
 The bundle is built for one prefix, `/api/` unless `VITE_BASE_PATH` says another
-(`VITE_BASE_PATH=/api/next/ pnpm build`). Vite's `base` and the router's `basename` both follow
-it, so every file the page asks for is under the prefix. The value must start and end with `/`;
-anything else stops the build with a message naming the setting. A build for any prefix but
+(`VITE_BASE_PATH=/api/next/ pnpm build`, or the line `VITE_BASE_PATH=/api/next/` in a `.env`
+file, which the environment overrides). Vite's `base` and the router's `basename` both follow
+it, so every file the page asks for is under the prefix. The value must start and end with `/`,
+and start with only one (`//api/next/` would name another host); anything else stops the build
+with a message naming the setting. A build for any prefix but
 `/api/` gets `<meta name="robots" content="noindex">`.
 
 The page loads nothing from another host: its three fonts (Space Grotesk, Manrope, JetBrains

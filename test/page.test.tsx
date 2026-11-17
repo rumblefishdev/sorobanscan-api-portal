@@ -113,9 +113,19 @@ it("links out safely and to no host but GitHub", () => {
   renderAt("/api/");
   for (const a of document.querySelectorAll("a")) {
     const href = a.getAttribute("href")!;
-    if (/^https?:/.test(href)) expect(href).toBe("https://github.com/rumblefishdev/stellar-x402");
+    if (/^(https?:)?\/\//.test(href)) expect(href).toBe("https://github.com/rumblefishdev/stellar-x402");
     if (a.getAttribute("target") === "_blank") expect(a.getAttribute("rel")).toBe("noopener noreferrer");
   }
+});
+
+// The curl preview scrolls sideways inside itself on a phone, so it takes the keyboard's focus:
+// a focusable region named by its bar, the name a screen reader gives it when it lands there.
+it("names the curl preview by its bar", () => {
+  renderAt("/api/");
+  const preview = screen.getByRole("region", { name: "soroban-scan-api" });
+  expect(preview.tagName).toBe("PRE");
+  expect(preview.getAttribute("tabindex")).toBe("0");
+  expect(preview.textContent).toContain("curl api.sorobanscan.com/scan/contracts/");
 });
 
 it("has the design's footer", () => {

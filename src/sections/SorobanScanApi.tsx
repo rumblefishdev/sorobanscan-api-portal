@@ -12,16 +12,19 @@ const key = (name: string) => <span className="preview-key">{`"${name}"`}</span>
 
 /**
  * The design's terminal: a call to the API that isn't out yet and its answer. The `<pre>` scrolls
- * sideways inside itself on a phone, so it takes the keyboard's focus, to be scrolled by keys too.
+ * sideways inside itself on a phone, so it takes the keyboard's focus, to be scrolled by keys too,
+ * and is a region named by its bar's label, which is what a screen reader says on landing there.
  */
 function Preview() {
   return (
     <div className="preview">
       <div className="preview-bar">
-        <span className="preview-name">soroban-scan-api</span>
+        <span id="ssa-preview-name" className="preview-name">
+          soroban-scan-api
+        </span>
         <span className="preview-note">Preview · subject to change</span>
       </div>
-      <pre tabIndex={0}>
+      <pre tabIndex={0} role="region" aria-labelledby="ssa-preview-name">
         <span className="preview-prompt">$</span>
         {" curl api.sorobanscan.com/scan/contracts/C…/events\n\n"}
         <span className="preview-ok"># 200 OK</span>
