@@ -230,7 +230,11 @@ In this order, each step reversible on its own:
    old Prices portal's files stay where they are; then the explorer serves `/api`, `/api/`, `/api/assets/*`, `/api/login`,
    `/api/dashboard*`, `/api/privacy-policy` and `/api/prices-api/*` from the hub bundle, removes
    its own hub page. Reverting this explorer change brings the old hub and the old Prices portal
-   back at once. In the moved Prices pages, `/api/prices-api/login`
+   back at once. The behaviours for `/api/prices-api` and `/api/prices-api/*` add the response
+   header `X-Robots-Tag: noindex` (akot, 2026-11-17): today the Prices portal's own `index.html`
+   carries `noindex`, and in the shared bundle the static HTML is the hub's, so the Prices pages
+   set it only from JavaScript, which crawlers don't reliably honour. The hub's own addresses get
+   no such header. In the moved Prices pages, `/api/prices-api/login`
    and `/api/prices-api/dashboard` send the browser to `/api/login?from=prices` and `/api/dashboard/prices`. Never to a bare
    `/api/login`: a browser holding the old cached `301` from `/api/login` to
    `/api/prices-api/login` would loop; the query makes it a different URL. The same holds for
