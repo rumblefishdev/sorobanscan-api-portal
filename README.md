@@ -135,7 +135,11 @@ The Discord application must list the callback among its redirects:
 `http://localhost:4173/api/hub/auth/callback` to sign in on `pnpm preview` too.
 
 Without the three settings `/api/hub/*` answers 503 `{"error":"sign_in_not_configured"}` and
-everything else runs as before. A setting present but malformed stops the server, naming it.
+everything else runs as before. With only one or two of them it answers the same, and the server
+warns at start, naming the ones missing. A malformed `HUB_SESSION_SECRET`, `DISCORD_GUILD_ID` or
+`HUB_PUBLIC_ORIGIN` stops the server from starting, naming the setting; when the server restarts
+itself (after a change to the config or an `.env` file), Vite logs "server restart failed" and
+keeps the old server running.
 
 Only the dev and preview servers run it: deploying it (in AWS, beside the explorer's CloudFront,
 the cutover's step 1) is a later plan.

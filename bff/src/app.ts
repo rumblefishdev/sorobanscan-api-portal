@@ -4,10 +4,14 @@
  * (signed `state`, PKCE, the pending cookie deleted first, the member decision) and its
  * `/api/auth/logout`. Changed: Hono instead of Express, a sign-in only (no key is issued, there is
  * no database), the hub's cookies and paths, refusals sent to the sign-in page by reason, and the
- * page on the same origin, so no CORS.
+ * page on the same origin, so no CORS of its own. (On `pnpm dev` and `pnpm preview` Vite's CORS
+ * runs first and lets a page on another localhost origin read an answer, but not one to a request
+ * that carried cookies, since it allows no credentials; and a `POST` still needs the hub's
+ * `Origin`.)
  */
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { Hono, type MiddlewareHandler } from "hono";
+import { routePath } from "hono/route";
 import {
   PENDING_COOKIE,
   SESSION_COOKIE,
@@ -142,7 +146,7 @@ export function createHub(settings: HubSettings | undefined, deps: HubDeps = {})
   // Hono's own handler writes the whole error to the console, and an error's message, stack or
   // cause can hold what a request carried. Its name and the route say where to look.
   app.onError((error, c) => {
-    console.error(`request_failed ${error.name} ${c.req.method} ${c.req.routePath}`);
+    console.error(`request_failed ${error.name} ${c.req.method} ${routePath(c)}`);
     return c.json({ error: "internal" }, 500);
   });
 

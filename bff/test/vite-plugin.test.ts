@@ -5,19 +5,23 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  createLogger,
   createServer,
   preview,
+  type Connect,
   type InlineConfig,
   type PreviewServer,
   type ViteDevServer,
 } from "vite";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { hubDevServer } from "../src/vite-plugin.ts";
 
 /*
  * The dev and preview servers, started from the repo's own `vite.config.ts` as `pnpm dev` and
  * `pnpm preview` start them, on ports the system picks. Every setting the config and the hub
- * read is stubbed, so a local `.env.local` changes nothing here, and the Prices backend is a
- * server of this test's, so nothing reaches the network.
+ * read is stubbed, so a local `.env.local` changes nothing here. The proxy's target is a server
+ * of this test's that no test asks anything of: it records whatever reaches it, which must be
+ * nothing, and nothing reaches the network.
  */
 
 const root = fileURLToPath(new URL("../..", import.meta.url));
@@ -67,11 +71,18 @@ function stubSettings(hub: Record<string, string>) {
   for (const [name, value] of Object.entries(settings)) vi.stubEnv(name, value);
 }
 
+/** What the servers warned, through Vite's logger, which the plugin gets as `config.logger`. */
+const warned: string[] = [];
+const logger = createLogger("silent");
+logger.warn = (message) => void warned.push(message);
+/** The warnings about the hub's settings, the only ones the plugin gives. */
+const hubWarnings = () => warned.filter((message) => /DISCORD_|HUB_/.test(message));
+
 /** Started from the repo's config, away from the user's dev server and its dependency cache. */
 const shared: InlineConfig = {
   configFile: join(root, "vite.config.ts"),
   root,
-  logLevel: "silent",
+  customLogger: logger,
   cacheDir: join(scratch, "vite-cache"),
 };
 
@@ -101,6 +112,7 @@ afterEach(async () => {
   await Promise.all(running.map((server) => server.close()));
   running = [];
   pricesSaw.length = 0;
+  warned.length = 0;
   vi.unstubAllEnvs();
 });
 
@@ -118,10 +130,18 @@ function ask(server: ViteDevServer | PreviewServer, path: string, accept = "*/*"
 const redirectUriOf = (response: Response) =>
   new URL(response.headers.get("location") ?? "").searchParams.get("redirect_uri");
 
+/** The Prices backend's rule, as `vite.config.ts` gives it to both servers' proxies. */
+const PRICES_RULE = String.raw`^/api/(auth|key|usage|config|api-docs-json)(/|\?|$)`;
+
+/** Each server with the proxy it resolved: dev's is `server.proxy`, preview's `preview.proxy`. */
 describe.each([
-  ["the dev server", startDev],
-  ["the preview server", startPreview],
-] as const)("%s", (_, start) => {
+  ["the dev server", startDev, (server: ViteDevServer | PreviewServer) => server.config.server],
+  [
+    "the preview server",
+    startPreview,
+    (server: ViteDevServer | PreviewServer) => server.config.preview,
+  ],
+] as const)("%s", (_, start, options) => {
   it("answers /api/hub/* with the hub's backend, signed in from its own port", async () => {
     stubSettings(SIGN_IN);
     const server = await start();
@@ -138,20 +158,29 @@ describe.each([
 
     // Not the Prices backend's, and not the page's.
     expect(pricesSaw).toEqual([]);
+    expect(hubWarnings()).toEqual([]);
   });
 
+  // Nothing is asked of the Prices backend: its rule is read from the resolved proxy, and what
+  // the plugin passes on is shown without a server, below.
   it("leaves the page and the Prices backend's paths as they were", async () => {
     stubSettings(SIGN_IN);
     const server = await start();
 
-    const page = await ask(server, "/api/", "text/html");
-    expect(page.status).toBe(200);
-    expect(page.headers.get("content-type")).toMatch(/^text\/html/);
-    expect(await page.text()).toMatch(/<html|<title>/i);
+    for (const path of ["/api/", "/api/hub", "/api/hubx/me"]) {
+      const page = await ask(server, path, "text/html");
+      expect(page.status, path).toBe(200);
+      expect(page.headers.get("content-type"), path).toMatch(/^text\/html/);
+      expect(await page.text(), path).toMatch(/<html|<title>/i);
+    }
 
-    const config = await ask(server, "/api/config");
-    expect(await config.json()).toEqual({ proxied: "/api/config" });
-    expect(pricesSaw).toEqual(["/api/config"]);
+    const proxy = options(server).proxy ?? {};
+    expect(Object.keys(proxy)).toContain(PRICES_RULE);
+    expect(proxy[PRICES_RULE]).toMatchObject({ target: process.env.DEV_API_PROXY_TARGET });
+    const rule = new RegExp(PRICES_RULE);
+    expect(rule.test("/api/config")).toBe(true);
+    expect(rule.test("/api/hub/me")).toBe(false);
+    expect(pricesSaw).toEqual([]);
   });
 
   it("answers 503 without the three settings, and the page still works", async () => {
@@ -164,7 +193,31 @@ describe.each([
       expect(await response.json(), path).toEqual({ error: "sign_in_not_configured" });
     }
     expect((await ask(server, "/api/", "text/html")).status).toBe(200);
-    expect(await (await ask(server, "/api/config")).json()).toEqual({ proxied: "/api/config" });
+    // None of them set is a dev setup without sign-in, not a mistake: nothing to warn about.
+    expect(hubWarnings()).toEqual([]);
+  });
+
+  // One or two of the three is most likely a typo or a line left out: it still answers 503, and
+  // says which are missing, never what the others hold.
+  it("warns, naming the missing ones, when only some of the three are set", async () => {
+    const needed = "DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET and HUB_SESSION_SECRET";
+    for (const [set, missing] of [
+      [
+        { ...NO_SIGN_IN, DISCORD_CLIENT_ID: SIGN_IN.DISCORD_CLIENT_ID },
+        "DISCORD_CLIENT_SECRET and HUB_SESSION_SECRET are",
+      ],
+      [{ ...SIGN_IN, HUB_SESSION_SECRET: "" }, "HUB_SESSION_SECRET is"],
+    ] as const) {
+      warned.length = 0;
+      stubSettings(set);
+      const server = await start();
+      expect(hubWarnings()).toEqual([
+        `The hub's sign-in needs ${needed}; ${missing} not set, so /api/hub/* answers 503.`,
+      ]);
+      for (const value of Object.values(SIGN_IN)) expect(warned.join("\n")).not.toContain(value);
+      const me = await ask(server, "/api/hub/me");
+      expect(await me.json()).toEqual({ error: "sign_in_not_configured" });
+    }
   });
 
   it("takes HUB_PUBLIC_ORIGIN as it is given", async () => {
@@ -194,6 +247,52 @@ it("reads nothing in middleware mode", async () => {
   });
   running.push(server);
   expect(server.httpServer).toBeNull();
+});
+
+/**
+ * The plugin's middleware as `configureServer` hands it to Vite, on a server that listens
+ * nowhere: no request leaves this process.
+ */
+function mountedMiddleware(base = "/api/"): Connect.NextHandleFunction {
+  const used: Connect.NextHandleFunction[] = [];
+  const server = {
+    config: { mode: "development", envDir: scratch, base, logger },
+    middlewares: { use: (handler: Connect.NextHandleFunction) => used.push(handler) },
+    httpServer: { address: () => null },
+  };
+  const hook = hubDevServer().configureServer;
+  const configure = typeof hook === "function" ? hook : hook?.handler;
+  void configure?.call({} as never, server as unknown as ViteDevServer);
+  const [middleware] = used;
+  if (!middleware || used.length !== 1) throw new Error("the plugin mounted no middleware");
+  return middleware;
+}
+
+describe("the plugin's middleware", () => {
+  // `next()` at once and with no error: had the hub taken the request, it would have answered on
+  // the (empty) response, or failed later, not called `next` here.
+  it("passes on every path outside /api/hub/, /api/hub itself and /api/hubx/ too", () => {
+    stubSettings(SIGN_IN);
+    const middleware = mountedMiddleware();
+    for (const url of [
+      "/api/",
+      "/api/config",
+      "/api/config?fresh=1",
+      "/api/auth/login",
+      "/api/hub",
+      "/api/hub?state=x",
+      "/api/hubx/me",
+      "/api/hub-x/me",
+      "/api/prices-api/hub/me",
+      "/api/next/hub/me",
+      "/hub/me",
+    ]) {
+      const next = vi.fn();
+      middleware({ url, method: "GET", headers: {} } as Connect.IncomingMessage, {} as never, next);
+      expect(next, url).toHaveBeenCalledTimes(1);
+      expect(next, url).toHaveBeenCalledWith();
+    }
+  });
 });
 
 describe("the hub's backend under another prefix", () => {

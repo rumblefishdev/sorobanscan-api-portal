@@ -150,6 +150,10 @@ export default defineConfig(({ mode }) => {
             include: ["test/**/*.test.{ts,tsx}", "src/prices/**/*.spec.{ts,tsx}"],
             environment: "jsdom",
             setupFiles: ["test/setup.ts"],
+            // `src/prices/main.spec.tsx` imports the Prices tree cold, MUI and all, after
+            // `vi.resetModules()`: alone that takes about 2 s, under the full suite more than
+            // Vitest's 5 s default.
+            testTimeout: 15_000,
           },
         },
         // The hub's backend, which runs on Node: every file here gets Node and none of the page's

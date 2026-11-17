@@ -21,6 +21,17 @@ const SNOWFLAKE = /^[0-9]{1,20}$/;
 /** Standard base64 with its padding, as `openssl rand -base64 32` prints it. */
 const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 
+/** The settings sign-in can't do without. */
+export const REQUIRED_SETTINGS = [
+  "DISCORD_CLIENT_ID",
+  "DISCORD_CLIENT_SECRET",
+  "HUB_SESSION_SECRET",
+] as const;
+
+/** Which of {@link REQUIRED_SETTINGS} `env` lacks or holds empty, by name. */
+export const missingSettings = (env: Record<string, string | undefined>): string[] =>
+  REQUIRED_SETTINGS.filter((name) => !env[name]);
+
 /**
  * The settings from `env`: `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET` and `HUB_SESSION_SECRET`
  * (base64 of at least 32 bytes), and the optional `DISCORD_GUILD_ID` (Stellar Developers) and

@@ -1,7 +1,7 @@
 import { getRequestListener } from "@hono/node-server";
 import { loadEnv, type Connect, type HttpServer, type Plugin, type ResolvedConfig } from "vite";
 import { createHub } from "./app.ts";
-import { readSettings } from "./settings.ts";
+import { missingSettings, readSettings, REQUIRED_SETTINGS } from "./settings.ts";
 
 /**
  * The hub's backend on `pnpm dev` and `pnpm preview`: every request under `${base}hub/` goes to
@@ -12,9 +12,11 @@ import { readSettings } from "./settings.ts";
  * Its settings are read as the config reads its own, with `loadEnv(mode, envDir, "")`: from the
  * mode's `.env` files and `.env.local`, `process.env` winning over them. Without
  * `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET` and `HUB_SESSION_SECRET` every hub route answers
- * 503 `sign_in_not_configured` and the rest of the app runs as before; a malformed one stops the
- * server from starting, naming it. `HUB_PUBLIC_ORIGIN` is `http://localhost:<port>` unless set,
- * with the port the server got, which is not 5173 when that one is taken.
+ * 503 `sign_in_not_configured` and the rest of the app runs as before; with only some of them it
+ * answers the same and warns, naming the missing ones. A malformed `HUB_SESSION_SECRET`,
+ * `DISCORD_GUILD_ID` or `HUB_PUBLIC_ORIGIN` stops the server from starting, naming it.
+ * `HUB_PUBLIC_ORIGIN` is `http://localhost:<port>` unless set, with the port the server got,
+ * which is not 5173 when that one is taken.
  */
 export function hubDevServer(): Plugin {
   return {
@@ -30,8 +32,10 @@ export function hubDevServer(): Plugin {
 }
 
 /**
- * Puts the hub in front of Vite's own middlewares (a `configure…Server` hook's middlewares run
- * first), so neither the proxy nor the page's fallback to `index.html` sees its paths.
+ * Mounts the hub where Vite puts a `configure…Server` hook's middlewares: after Vite's own check
+ * of the request (dev only), CORS and `Host` check (`allowedHosts`), which Vite registers before
+ * any plugin's, and before the proxy, the prefix (`base`) middleware and the fallback to
+ * `index.html`, so none of those sees the hub's paths.
  */
 function mountHub(
   config: ResolvedConfig,
@@ -46,6 +50,17 @@ function mountHub(
   // Read now, so a malformed setting stops the server before anyone opens the page.
   const settings = readSettings(env, config.base);
   const prefix = `${config.base}hub/`;
+
+  // None of the three is a dev setup without sign-in; one or two is a mistake worth a line. By
+  // name only: a value is never printed.
+  const missing = missingSettings(env);
+  if (missing.length > 0 && missing.length < REQUIRED_SETTINGS.length) {
+    const needed = `${REQUIRED_SETTINGS.slice(0, -1).join(", ")} and ${REQUIRED_SETTINGS.at(-1)}`;
+    const lacking = `${missing.join(" and ")} ${missing.length === 1 ? "is" : "are"}`;
+    config.logger.warn(
+      `The hub's sign-in needs ${needed}; ${lacking} not set, so ${prefix}* answers 503.`,
+    );
+  }
 
   let listener: ReturnType<typeof getRequestListener> | undefined;
   /** Made at the first request, when the server listens and its port is known. */

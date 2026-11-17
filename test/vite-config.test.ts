@@ -4,7 +4,13 @@ import viteConfig from "../vite.config.ts";
 
 type TestProject = {
   extends?: boolean | string;
-  test?: { name?: string; include?: string[]; environment?: string; setupFiles?: string[] };
+  test?: {
+    name?: string;
+    include?: string[];
+    environment?: string;
+    setupFiles?: string[];
+    testTimeout?: number;
+  };
 };
 type TestOptions = TestProject["test"] & {
   env?: Record<string, string>;
@@ -39,6 +45,7 @@ describe("the tests' config", () => {
     const test = resolve("").test;
     expect(test?.setupFiles).toBeUndefined();
     expect(test?.environment).toBeUndefined();
+    expect(test?.testTimeout).toBeUndefined();
     const project = (name: string) => test?.projects?.find((p) => p.test?.name === name);
 
     expect(project("bff")).toEqual({
@@ -52,6 +59,8 @@ describe("the tests' config", () => {
         include: ["test/**/*.test.{ts,tsx}", "src/prices/**/*.spec.{ts,tsx}"],
         environment: "jsdom",
         setupFiles: ["test/setup.ts"],
+        // A cold import of the Prices tree takes more than Vitest's 5 s under the full suite.
+        testTimeout: 15_000,
       },
     });
     expect(test?.projects).toHaveLength(2);
