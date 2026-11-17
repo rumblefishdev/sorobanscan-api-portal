@@ -19,7 +19,7 @@
 - The session holds the Discord id, the username and the expiry, nothing else. No Discord token is kept.
 - Every `POST` must carry `Origin` equal to the public origin.
 - The BFF never answers 403 or 404 for its own decisions (the production CloudFront turns those into the explorer's page): no session → 401; refused `Origin` → 400.
-- Settings (env, read with `loadEnv(mode, cwd, "")`, never exposed to the bundle): `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `HUB_SESSION_SECRET` (base64, at least 32 bytes), optional `DISCORD_GUILD_ID`, `HUB_PUBLIC_ORIGIN` (default `http://localhost:5173` in dev). Local values live in `.env.development.local` (git-ignored). Without the three required ones the dev server still starts and `/api/hub/*` answers 503 `{"error":"sign_in_not_configured"}`.
+- Settings (env, read with `loadEnv(mode, cwd, "")`, never exposed to the bundle): `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `HUB_SESSION_SECRET` (base64, at least 32 bytes), optional `DISCORD_GUILD_ID`, `HUB_PUBLIC_ORIGIN` (default `http://localhost:5173` in dev). Local values live in `.env.local` (git-ignored; read by both `pnpm dev` and `pnpm preview`, which runs in production mode). Without the three required ones the dev server still starts and `/api/hub/*` answers 503 `{"error":"sign_in_not_configured"}`.
 - Code taken from stellar-x402 (`apps/portal/src/discord.ts`, `tokens.ts`, `cookies.ts`, Apache-2.0, same organisation) keeps a header comment naming its source file and commit.
 - `src/account/` is checked by the Prices TypeScript project (it imports `src/prices`); no hub `.ts` imports `src/account` or `src/prices` (`npx tsc -p tsconfig.json --listFiles | grep -E 'src/(prices|account)'` empty).
 - Product switch: `VITE_PRODUCTS` (comma list, default `prices`).
@@ -106,7 +106,7 @@ git add -A && git commit -m "feat: sign in with Discord through the hub's backen
 Run: `pnpm test bff/test/vite-plugin.test.ts`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement** the plugin, register it in `vite.config.ts`; README: the BFF, its settings, `.env.development.local`, registering the Discord application's redirect `http://localhost:5173/api/hub/auth/callback`, and that a production deploy is a later plan.
+- [ ] **Step 3: Implement** the plugin, register it in `vite.config.ts`; README: the BFF, its settings, `.env.local`, registering the Discord application's redirect `http://localhost:5173/api/hub/auth/callback`, and that a production deploy is a later plan.
 
 - [ ] **Step 4: Run the checks**
 
@@ -172,4 +172,4 @@ Expected: all pass; MUI only in the Prices and account chunks.
 git add -A && git commit -m "feat: the hub's sign-in page and dashboard shell"
 ```
 
-- [ ] **Step 6: End to end (controller, with akot's Discord application)**: `.env.development.local` with the application's id, secret and a fresh `HUB_SESSION_SECRET`; `pnpm dev`; "Log in" → Discord → `/api/dashboard` with the username; reload keeps the session; Sign out → `/api/` with "Log in". A non-member refusal is not tried unless akot has such an account.
+- [ ] **Step 6: End to end (controller, with akot's Discord application)**: `.env.local` with the application's id, secret and a fresh `HUB_SESSION_SECRET`; `pnpm dev`; "Log in" → Discord → `/api/dashboard` with the username; reload keeps the session; Sign out → `/api/` with "Log in". A non-member refusal is not tried unless akot has such an account.
