@@ -1,12 +1,13 @@
 // @vitest-environment node
 import { fileURLToPath } from "node:url";
 import { build } from "vite";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { basePath, routerBasename } from "../src/base-path";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
 
-const built = async (base: string) => {
+/** Builds the page; without `base`, Vite takes the one `vite.config.ts` gives. */
+const built = async (base?: string) => {
   const result = await build({ root, base, logLevel: "silent", build: { write: false } });
   return (Array.isArray(result) ? result : [result]).flatMap((part) =>
     "output" in part ? part.output : [],
@@ -14,6 +15,17 @@ const built = async (base: string) => {
 };
 type OutputFile = Awaited<ReturnType<typeof built>>[number];
 const text = (file: OutputFile) => (file.type === "asset" ? String(file.source) : file.code);
+const indexHtml = (output: OutputFile[]) => {
+  const index = output.find((file) => file.fileName === "index.html");
+  if (!index) throw new Error("the build has no index.html");
+  return text(index);
+};
+const expectEveryFileUnder = (page: string, base: string) => {
+  const urls = [...page.matchAll(/(?:src|href)="([^"]+)"/g)].map((m) => m[1]);
+  expect(urls.length).toBeGreaterThan(0);
+  for (const url of urls) expect(url).toMatch(new RegExp(`^${base}assets/`));
+};
+const isNoindex = (page: string) => page.includes('<meta name="robots" content="noindex"');
 
 describe("basePath", () => {
   it("is /api/ when the setting is absent or empty", () => {
@@ -37,15 +49,11 @@ describe.each(["/api/", "/api/next/"])("the page built for %s", (base) => {
   let page: string;
   beforeAll(async () => {
     output = await built(base);
-    const index = output.find((file) => file.fileName === "index.html");
-    if (!index) throw new Error("the build has no index.html");
-    page = text(index);
+    page = indexHtml(output);
   });
 
   it("asks for every file under the prefix", () => {
-    const urls = [...page.matchAll(/(?:src|href)="([^"]+)"/g)].map((m) => m[1]);
-    expect(urls.length).toBeGreaterThan(0);
-    for (const url of urls) expect(url).toMatch(new RegExp(`^${base}assets/`));
+    expectEveryFileUnder(page, base);
   });
 
   it("ships its fonts and names no other host", () => {
@@ -59,6 +67,31 @@ describe.each(["/api/", "/api/next/"])("the page built for %s", (base) => {
   });
 
   it("is noindex only away from /api/", () => {
-    expect(page.includes('<meta name="robots" content="noindex"')).toBe(base !== "/api/");
+    expect(isNoindex(page)).toBe(base !== "/api/");
+  });
+});
+
+// The builds above hand Vite their `base`, which overrides the config's. These go through
+// `vite.config.ts` as `pnpm build` does, the setting reaching it in `process.env`.
+describe.each([
+  ["", "/api/"],
+  ["/api/next/", "/api/next/"],
+])("the page built through the config with VITE_BASE_PATH=%j", (setting, base) => {
+  let page: string;
+  beforeAll(async () => {
+    vi.stubEnv("VITE_BASE_PATH", setting);
+    try {
+      page = indexHtml(await built());
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it(`asks for every file under ${base}`, () => {
+    expectEveryFileUnder(page, base);
+  });
+
+  it("is noindex only away from /api/", () => {
+    expect(isNoindex(page)).toBe(base !== "/api/");
   });
 });
