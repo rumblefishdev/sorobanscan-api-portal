@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import viteConfig, { devProxy } from '../../vite.config.ts';
 
@@ -137,6 +137,34 @@ describe('dev proxy', () => {
     ]) {
       expect(rule.test(bundle), bundle).toBe(false);
     }
+  });
+});
+
+describe('dev proxy without DEV_API_PROXY_TARGET', () => {
+  // Empty in `process.env`, which wins over the `.env` files, so a local
+  // `.env.development` cannot set a target here; the config reads an empty
+  // setting as an unset one.
+  beforeEach(() => {
+    vi.stubEnv('DEV_API_PROXY_TARGET', '');
+    vi.stubEnv('DEV_API_KEY', '');
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("proxies the portal backend to Prices' production API", () => {
+    const { server, preview } = resolve();
+    const { key, entry } = backendRule(server?.proxy);
+
+    // `pnpm dev` alone shows the Prices portal working, "Get API Key"
+    // included: `/api/config` reaches a backend rather than Vite.
+    expect(new RegExp(key).test('/api/config'), key).toBe(true);
+    expect(entry?.target).toBe('https://prices-api.sorobanscan.com');
+    expect(server?.proxy?.['/v1']?.target).toBe(
+      'https://prices-api.sorobanscan.com',
+    );
+    expect(server?.proxy?.['/v1']?.headers).toBeUndefined();
+    expect(preview?.proxy).toEqual(server?.proxy);
   });
 });
 

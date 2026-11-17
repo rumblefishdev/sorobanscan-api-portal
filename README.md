@@ -76,24 +76,27 @@ VITE_PORTAL_API_ORIGIN=https://prices-api.sorobanscan.com pnpm build
 Without it every backend URL is relative (`/api/config`, `/api/auth/login`), which only the dev
 server's proxy answers.
 
-`DEV_API_PROXY_TARGET` is where `pnpm dev` and `pnpm preview` send the backend's paths
-(`/api/auth`, `/api/key`, `/api/usage`, `/api/config`, `/api/api-docs-json`, `/v1`, `/health`,
-`/api-docs-json`), so the browser sees one origin. It goes in the environment or in
+`pnpm dev` and `pnpm preview` send the backend's paths (`/api/auth`, `/api/key`, `/api/usage`,
+`/api/config`, `/api/api-docs-json`, `/v1`, `/health`, `/api-docs-json`) to Prices' production
+API, `https://prices-api.sorobanscan.com`, so the browser sees one origin and the Prices portal
+works out of the box, "Get API Key" included. Signing in from there goes to Discord and comes
+back to production, never to localhost.
+
+`DEV_API_PROXY_TARGET` points them at another backend instead. It goes in the environment or in
 `.env.development`, which git ignores:
 
 ```sh
-DEV_API_PROXY_TARGET=https://prices-api.sorobanscan.com pnpm dev
+DEV_API_PROXY_TARGET=http://localhost:8080 pnpm dev
 ```
 
 `DEV_API_KEY`, when set, goes on `/v1` alone as `x-api-key`. Neither setting starts with
-`VITE_`, so neither reaches the bundle. Without a target there is no proxy, and the Prices pages
-that call the backend say they could not reach it.
+`VITE_`, so neither reaches the bundle.
 
 Signing in locally needs Prices' backend run locally, as its own README says
-(stellar-prices-api `packages/prices-api/README.md`, "Running portal sign-in locally"), with
-`DEV_API_PROXY_TARGET=http://localhost:8080`. Its `redirect_uri` and the Discord registration
-must name this dev server, `http://localhost:5173/api/auth/callback`, not Prices' port 4200.
-Against production the sign-in goes to Discord and comes back to production, never to localhost.
+(stellar-prices-api `packages/prices-api/README.md`, "Running portal sign-in locally": `cargo run
+--bin serve`, on port 8080), with `DEV_API_PROXY_TARGET=http://localhost:8080`. Its
+`redirect_uri` and the Discord registration must name this dev server,
+`http://localhost:5173/api/auth/callback`, not Prices' port 4200.
 
 ## Putting it on production
 

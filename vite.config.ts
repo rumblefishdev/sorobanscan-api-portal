@@ -72,10 +72,18 @@ const PROXIED_PATHS = [
 const KEYED_PATHS: readonly string[] = ["/v1"];
 
 /**
+ * The target when `DEV_API_PROXY_TARGET` is unset or empty: Prices' public production API, so
+ * `pnpm dev` alone shows the Prices portal working, "Get API Key" included (akot, 2026-11-17).
+ * stellar-prices-api has no default and runs against nothing. Signing in through it lands on
+ * production, not here (see `PROXIED_PATHS`). For a local backend, set the variable instead, e.g.
+ * `DEV_API_PROXY_TARGET=http://localhost:8080` for `cargo run --bin serve`, whose port is 8080.
+ */
+const DEFAULT_DEV_API_PROXY_TARGET = "https://prices-api.sorobanscan.com";
+
+/**
  * The proxy for `server` and `preview`: each of `PROXIED_PATHS` to `target`, and `apiKey` as
- * `x-api-key` on `/v1` alone. No target, no proxy: `.env.development` is gitignored, and without
- * it the app runs against nothing, which is the correct default for a repo where a checked-in
- * target would be a production URL.
+ * `x-api-key` on `/v1` alone. No target, no proxy; the config gives it
+ * `DEFAULT_DEV_API_PROXY_TARGET` when the setting is unset.
  */
 export function devProxy(
   target: string | undefined,
@@ -109,7 +117,7 @@ export default defineConfig(({ mode }) => {
   // JavaScript and served to every visitor. No API key and no secret may reach the bundle.
   const env = loadEnv(mode, process.cwd(), "");
   const base = basePath(env.VITE_BASE_PATH);
-  const proxy = devProxy(env.DEV_API_PROXY_TARGET, env.DEV_API_KEY);
+  const proxy = devProxy(env.DEV_API_PROXY_TARGET || DEFAULT_DEV_API_PROXY_TARGET, env.DEV_API_KEY);
   return {
     base,
     server: { proxy },
