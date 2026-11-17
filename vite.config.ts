@@ -133,7 +133,12 @@ export default defineConfig(({ mode }) => {
     },
     plugins: [react(), noindexOutsideApi()],
     test: {
-      include: ["test/**/*.test.{ts,tsx}", "src/prices/**/*.spec.{ts,tsx}"],
+      // `bff/test` is the hub's backend: each of its files asks for the `node` environment.
+      include: [
+        "test/**/*.test.{ts,tsx}",
+        "src/prices/**/*.spec.{ts,tsx}",
+        "bff/test/**/*.test.ts",
+      ],
       environment: "jsdom",
       setupFiles: ["test/setup.ts"],
       // Vitest gives `import.meta.env.BASE_URL` as `/` whatever `base` is. The tests see the
