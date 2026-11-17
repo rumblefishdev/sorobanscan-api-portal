@@ -1,6 +1,12 @@
-import { ANCHORS, EXPLORER_URL, GITHUB_URL, PRICES_API_URL, X402_URL } from "../links";
+import {
+  ANCHORS, DASHBOARD_URL, EXPLORER_URL, GITHUB_URL, LOGIN_URL, PRICES_API_URL, X402_URL,
+} from "../links";
+import { useSignedIn } from "../session";
 
 export function TopBar() {
+  // "Log in" while the backend is asked too, the common case. One link either way, the same
+  // button, so the bar doesn't move when it turns into "Dashboard".
+  const signedIn = useSignedIn();
   return (
     <header className="site-header">
       <nav aria-label="Main" className="wrap">
@@ -17,8 +23,8 @@ export function TopBar() {
           <a href={`#${ANCHORS.stack}`}>How they connect</a>
           <a href={`#${ANCHORS.faq}`}>FAQ</a>
           <a href={EXPLORER_URL}>Explorer</a>
-          <a className="btn btn-primary" href={`#${ANCHORS.products}`}>
-            Browse APIs
+          <a className="btn btn-primary" href={signedIn ? DASHBOARD_URL : LOGIN_URL}>
+            {signedIn ? "Dashboard" : "Log in"}
           </a>
         </div>
       </nav>
