@@ -12,7 +12,6 @@ import App from './app/app';
 // actually served from. See `base-path.ts` for why the two values differ by a
 // slash.
 import { ROUTER_BASENAME } from './base-path';
-import { bridgeOAuthPopup } from './landing/oauthPopup';
 // The three self-hosted families (task 0193). Imported here rather than linked
 // from `index.html` so Vite fingerprints the `.woff2` files and rewrites their
 // URLs under `base` — a `<link>` in the document would ship the paths verbatim
@@ -21,27 +20,23 @@ import { bridgeOAuthPopup } from './landing/oauthPopup';
 import './theme/fonts.css';
 import { theme } from './theme/theme';
 
-// BEFORE anything mounts. When this document is the Discord sign-in popup, its
-// only job is to hand the outcome to the window that opened it and close — see
-// `landing/oauthPopup.ts`. Booting the app here would render a second copy of
-// the portal inside the popup, follow `/`'s redirect to the dashboard, and
-// leave the visitor with two windows and no idea which one is theirs.
-if (!bridgeOAuthPopup()) {
-  const root = ReactDOM.createRoot(
-    document.getElementById('root') as HTMLElement,
-  );
+// The Discord sign-in popup never gets here: `src/boot.js` runs the bridge in
+// `landing/oauthPopup.ts` first and imports this module only when the
+// document is not the popup.
+const root = ReactDOM.createRoot(
+  document.getElementById('root') as HTMLElement,
+);
 
-  root.render(
-    <StrictMode>
-      {/* `CssBaseline` INSIDE the provider, so it paints the theme's dark floor
-          rather than MUI's default white one. Outside it, the first frame of
-          every page load is a white flash before the theme applies. */}
-      <ThemeProvider theme={theme}>
-        <CssBaseline />
-        <BrowserRouter basename={ROUTER_BASENAME}>
-          <App />
-        </BrowserRouter>
-      </ThemeProvider>
-    </StrictMode>,
-  );
-}
+root.render(
+  <StrictMode>
+    {/* `CssBaseline` INSIDE the provider, so it paints the theme's dark floor
+        rather than MUI's default white one. Outside it, the first frame of
+        every page load is a white flash before the theme applies. */}
+    <ThemeProvider theme={theme}>
+      <CssBaseline />
+      <BrowserRouter basename={ROUTER_BASENAME}>
+        <App />
+      </BrowserRouter>
+    </ThemeProvider>
+  </StrictMode>,
+);

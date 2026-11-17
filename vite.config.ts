@@ -23,12 +23,18 @@ const noindexOutsideApi = (): Plugin => {
 
 // `VITE_BASE_PATH` is read as Vite reads its other settings: from the `.env` files of the mode
 // built, and from `process.env`, which wins over them.
-export default defineConfig(({ mode }) => ({
-  base: basePath(loadEnv(mode, process.cwd(), "VITE_BASE_PATH").VITE_BASE_PATH),
-  plugins: [react(), noindexOutsideApi()],
-  test: {
-    include: ["test/**/*.test.{ts,tsx}", "src/prices/**/*.spec.{ts,tsx}"],
-    environment: "jsdom",
-    setupFiles: ["test/setup.ts"],
-  },
-}));
+export default defineConfig(({ mode }) => {
+  const base = basePath(loadEnv(mode, process.cwd(), "VITE_BASE_PATH").VITE_BASE_PATH);
+  return {
+    base,
+    plugins: [react(), noindexOutsideApi()],
+    test: {
+      include: ["test/**/*.test.{ts,tsx}", "src/prices/**/*.spec.{ts,tsx}"],
+      environment: "jsdom",
+      setupFiles: ["test/setup.ts"],
+      // Vitest gives `import.meta.env.BASE_URL` as `/` whatever `base` is. The tests see the
+      // build's, which the boot module and the Prices paths are derived from.
+      env: { BASE_URL: base },
+    },
+  };
+});

@@ -14,18 +14,19 @@
  * strips a trailing `basename` and warns if given one. So `ROUTER_BASENAME` is
  * DERIVED rather than typed out a second time.
  *
- * `vite.config.mts` holds its own copy of `BASE_PATH`, because a config that
- * imports application source trips Vite's `configLoader: 'native'` warning on
- * every build. That copy is not left on trust: `base-path.spec.ts` loads the
- * real config and fails if the two stop matching.
+ * In sorobanscan-api-portal the bundle is the hub's, built for the hub's
+ * `base` (`/api/` unless `VITE_BASE_PATH` names another), and this portal is
+ * the tree `src/boot.js` boots for the addresses under `prices-api/` there. So
+ * `BASE_PATH` is derived from that `base` rather than typed out, and a build
+ * for another prefix keeps these routes under it.
  *
  * This is a BUILD-time concern. CloudFront cannot fix it after the fact, which
  * is why task 0185 put it in the first commit rather than discovering it on the
  * first deploy.
  */
 
-/** Vite's `base`. Trailing slash required. */
-export const BASE_PATH = '/api/prices-api/';
+/** The bundle's `base` and `prices-api/`. Trailing slash required. */
+export const BASE_PATH = import.meta.env.BASE_URL + 'prices-api/';
 
 /** react-router's `basename`. Same prefix, no trailing slash. */
 export const ROUTER_BASENAME = BASE_PATH.replace(/\/$/, '');

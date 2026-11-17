@@ -5007,24 +5007,31 @@ export function App() {
   };
 
   return (
-    <Routes>
-      <Route path="/" element={<RootRoute gate={gate} />} />
-      <Route path="/login" element={<LoginRoute gate={gate} />} />
-      <Route path="/dashboard" element={<DashboardRoute gate={gate} />} />
-      <Route path="/quick-start" element={<QuickStartRoute gate={gate} />} />
-      <Route path="/docs" element={<DocsRoute gate={gate} />} />
-      <Route
-        path="/privacy-policy"
-        element={<PrivacyPolicyRoute gate={gate} />}
-      />
-      {/* Anything else is a URL this app never minted. On the shared host
-          every extensionless path under `/api/prices-api/` boots this bundle
-          (the explorer's routing function rewrites it to
-          `/api/prices-api/index.html`), so
-          a mistyped deep link arrives here rather than at S3 — and goes to
-          `/` rather than to a 404 page the app does not have. */}
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
+    <>
+      {/* The page's title and `noindex`, which its own `index.html` held
+          before the portal moved into sorobanscan-api-portal and shared the
+          hub's. React 19 hoists both into `<head>`. */}
+      <title>Stellar Prices API — API keys</title>
+      <meta name="robots" content="noindex" />
+      <Routes>
+        <Route path="/" element={<RootRoute gate={gate} />} />
+        <Route path="/login" element={<LoginRoute gate={gate} />} />
+        <Route path="/dashboard" element={<DashboardRoute gate={gate} />} />
+        <Route path="/quick-start" element={<QuickStartRoute gate={gate} />} />
+        <Route path="/docs" element={<DocsRoute gate={gate} />} />
+        <Route
+          path="/privacy-policy"
+          element={<PrivacyPolicyRoute gate={gate} />}
+        />
+        {/* Anything else is a URL this app never minted. On the shared host
+            every extensionless path under `/api/prices-api/` boots this bundle
+            (the explorer's routing function rewrites it to
+            `/api/prices-api/index.html`), so
+            a mistyped deep link arrives here rather than at S3 — and goes to
+            `/` rather than to a 404 page the app does not have. */}
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </>
   );
 }
 

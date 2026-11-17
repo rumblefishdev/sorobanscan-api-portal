@@ -25,11 +25,26 @@ const indexHtml = (output: OutputFile[]) => {
   if (!index) throw new Error("the build has no index.html");
   return text(index);
 };
+/**
+ * The page's analytics, as on the rest of sorobanscan.com: GTM's container and HubSpot's banner
+ * (`index.html`). These two are the only files it asks another host for, and these two hosts the
+ * only others it names.
+ */
+const ANALYTICS_URLS = [
+  "https://www.googletagmanager.com/ns.html?id=GTM-TBF2GP5S",
+  "//js.hs-scripts.com/8102665.js",
+];
+const ANALYTICS_HOSTS = ["js.hs-scripts.com", "www.googletagmanager.com"];
 const expectEveryFileUnder = (page: string, base: string) => {
-  const urls = [...page.matchAll(/(?:src|href)="([^"]+)"/g)].map((m) => m[1]);
+  const urls = [...page.matchAll(/(?:src|href)="([^"]+)"/g)]
+    .map((m) => m[1] ?? "")
+    .filter((url) => !ANALYTICS_URLS.includes(url));
   expect(urls.length).toBeGreaterThan(0);
   for (const url of urls) expect(url).toMatch(new RegExp(`^${base}assets/`));
 };
+/** Every host a URL in `content` names, `//host/…` with a scheme before it or without, sorted. */
+const hostsNamed = (content: string) =>
+  [...new Set([...content.matchAll(/\/\/([\w-]+(?:\.[\w-]+)+)/g)].map((m) => m[1]))].sort();
 const isNoindex = (page: string) => page.includes('<meta name="robots" content="noindex"');
 
 describe("basePath", () => {
@@ -66,14 +81,21 @@ describe.each(["/api/", "/api/next/"])("the page built for %s", (base) => {
     expectEveryFileUnder(page, base);
   });
 
-  it("ships its fonts and names no other host", () => {
+  it("ships its fonts and names no other host but the analytics'", () => {
     expect(output.some((file) => file.fileName.endsWith(".woff2"))).toBe(true);
     for (const file of output.filter((file) => /\.(html|css)$/.test(file.fileName))) {
       expect(text(file)).not.toMatch(/url\(\s*["']?(https?:)?\/\//);
       expect(text(file)).not.toContain("fonts.googleapis.com");
+      for (const host of hostsNamed(text(file))) expect(ANALYTICS_HOSTS).toContain(host);
     }
-    expect(page).not.toMatch(/<script\b[^>]*\bsrc="(?:http|\/\/)/);
-    expect(page).not.toMatch(/<link\b[^>]*\bhref="(?:http|\/\/)/);
+    expect(hostsNamed(page)).toEqual(ANALYTICS_HOSTS);
+  });
+
+  it("denies consent by default before it loads GTM's container", () => {
+    const defaultAt = page.search(/analytics_storage:\s*'denied'/);
+    expect(defaultAt).toBeGreaterThanOrEqual(0);
+    expect(defaultAt).toBeLessThan(page.indexOf("googletagmanager.com/gtm.js"));
+    expect(page).toContain("GTM-TBF2GP5S");
   });
 
   it("is noindex only away from /api/", () => {
