@@ -134,11 +134,14 @@ function UsageCard({ view, settling }: { view: AccountView; settling: boolean })
     );
   }
   // Prices' "Could not load your usage", without its reason: when the account failed the key card
-  // above says why, and when only the usage did the hub's contract gives none.
+  // above says why, and when only the usage did the hub's contract gives none. An `alert` only
+  // when it is the one failure: the key card's already says a failed account.
   if (view.state === "failed" || usageReadFailed(view.account)) {
     return (
       <DashboardCard title="Monthly Usage">
-        <p data-testid="usage-failed">Could not load your usage.</p>
+        <p data-testid="usage-failed" role={view.state === "failed" ? undefined : "alert"}>
+          Could not load your usage.
+        </p>
       </DashboardCard>
     );
   }

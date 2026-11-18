@@ -66,6 +66,10 @@ export function useIssueOutcome(): IssueOutcome | null {
  *
  * `issued` is the key card's to say (it depends on whether the key is listed yet), so it renders
  * nothing here.
+ *
+ * Each is a live region, so a screen reader says it when the tab draws it: `status` where nothing
+ * is wrong (a key is there, or the visitor stopped), `alert` where no key was issued and something
+ * stands in the way, as Prices' own "Copied." and failed revoke are.
  */
 export function IssueBanner({
   outcome,
@@ -84,14 +88,14 @@ export function IssueBanner({
   switch (outcome) {
     case "has_key":
       return (
-        <p data-testid="issue-has-key">
+        <p data-testid="issue-has-key" role="status">
           You already have an API key, so no new one was issued: it is below.
         </p>
       );
     case "capped":
       if (nextEligibleAt === undefined) return null;
       return (
-        <p data-testid="issue-capped">
+        <p data-testid="issue-capped" role="alert">
           No new key yet: you deactivated your previous key this quota period, and a replacement can
           be issued from <strong>{describeNextEligible(nextEligibleAt)}</strong>. Until then you do
           not have a working key.
@@ -99,7 +103,7 @@ export function IssueBanner({
       );
     case "too_young":
       return (
-        <p data-testid="issue-too-young">
+        <p data-testid="issue-too-young" role="alert">
           Your Discord account is too new to get an API key — this is a short wait, not a
           rejection. Try again in a few minutes.
         </p>
@@ -108,7 +112,7 @@ export function IssueBanner({
     // address, so a visitor who left this tab for Discord and came Back would find it gone.
     case "not_member":
       return (
-        <p data-testid="issue-not-member">
+        <p data-testid="issue-not-member" role="alert">
           You need to be a member of the{" "}
           <a href={STELLAR_DISCORD_INVITE} target="_blank" rel="noopener noreferrer">
             Stellar Developers Discord
@@ -118,7 +122,7 @@ export function IssueBanner({
       );
     case "pending_rules":
       return (
-        <p data-testid="issue-pending-rules">
+        <p data-testid="issue-pending-rules" role="alert">
           Your Discord account is on the{" "}
           <a href={STELLAR_DISCORD_SERVER} target="_blank" rel="noopener noreferrer">
             Stellar Developers Discord
@@ -129,21 +133,21 @@ export function IssueBanner({
       );
     case "unknown":
       return (
-        <p data-testid="issue-unknown">
+        <p data-testid="issue-unknown" role="alert">
           We could not verify your Discord membership just now — that is a problem talking to
           Discord, not a statement about your membership. Please try again shortly.
         </p>
       );
     case "failed":
       return (
-        <p data-testid="issue-failed">
+        <p data-testid="issue-failed" role="alert">
           We could not create your key. This is our key service, not your Discord membership.
           Please try again, and tell us if it keeps happening.
         </p>
       );
     case "cancelled":
       return (
-        <p data-testid="issue-cancelled">
+        <p data-testid="issue-cancelled" role="status">
           You stopped before Discord could check your membership — nothing was created, and nothing
           is wrong. Pick it up again whenever you like.
         </p>
@@ -152,7 +156,7 @@ export function IssueBanner({
     // whichever account it has a session for.
     case "account_mismatch":
       return (
-        <p data-testid="issue-account-mismatch">
+        <p data-testid="issue-account-mismatch" role="alert">
           Discord answered for another account than <strong>{username}</strong>, the one signed in
           here, so no key was issued. Switch back to {username} on Discord and try again, or sign
           out and sign in with the other account.

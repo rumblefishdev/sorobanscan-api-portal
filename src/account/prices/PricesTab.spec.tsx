@@ -350,7 +350,7 @@ describe("the Prices tab", () => {
       const key = await card("API Key");
       fireEvent.click(within(key).getByRole("button", { name: "Copy key" }));
       await settle();
-      expect(within(key).getByText(/Could not copy your API key/).textContent).toBe(
+      expect(within(key).getByRole("alert").textContent).toBe(
         "Could not copy your API key: Could not copy — reveal the key and copy it by hand.",
       );
       expect(within(key).queryByRole("status")).toBeNull();
@@ -368,6 +368,7 @@ describe("the Prices tab", () => {
     fireEvent.click(within(key).getByRole("button", { name: "Show key" }));
     await settle();
     expect(within(key).getByTestId("api-key").textContent).toBe(MASK);
+    expect(within(key).getByRole("alert")).toBe(within(key).getByTestId("reveal-failed"));
     expect(within(key).getByTestId("reveal-failed").textContent).toBe(
       "Could not show your API key: the Prices API did not answer — try again in a moment (prices_unavailable).",
     );
@@ -482,7 +483,9 @@ describe("the Prices tab", () => {
     stubHub({ account: () => answer(200, { ...ACTIVE, details: details(null) }) });
     renderAt(`/api/dashboard/prices${query}`);
     await card(title);
-    expect(body(await card("Monthly Usage"))).toBe("Could not load your usage.");
+    const usage = await card("Monthly Usage");
+    expect(body(usage)).toBe("Could not load your usage.");
+    expect(screen.getByRole("alert")).toBe(within(usage).getByTestId("usage-failed"));
     const rate = await card("Rate Limit");
     expect(within(rate).getByTestId("rate-limit-pending").textContent).toBe(
       "Could not load your plan, so its limits are not shown.",
@@ -540,66 +543,78 @@ describe("the Prices tab", () => {
       "issued",
       ACTIVE,
       "issue-issued",
+      "status",
       "Welcome! Your API key has been generated. Copy it below and make your first request — the Quick Start guide has everything you need.",
     ],
     [
       "has_key",
       ACTIVE,
       "issue-has-key",
+      "status",
       "You already have an API key, so no new one was issued: it is below.",
     ],
     [
       "capped",
       REVOKED_CAPPED,
       "issue-capped",
+      "alert",
       "No new key yet: you deactivated your previous key this quota period, and a replacement can be issued from 1 December 2026. Until then you do not have a working key.",
     ],
     [
       "too_young",
       NO_KEY,
       "issue-too-young",
+      "alert",
       "Your Discord account is too new to get an API key — this is a short wait, not a rejection. Try again in a few minutes.",
     ],
     [
       "not_member",
       NO_KEY,
       "issue-not-member",
+      "alert",
       "You need to be a member of the Stellar Developers Discord to get an API key — joining is an open invite. Once you are in, try again.",
     ],
     [
       "pending_rules",
       NO_KEY,
       "issue-pending-rules",
+      "alert",
       "Your Discord account is on the Stellar Developers Discord, but you have not accepted the server's rules yet. Accept them on Discord, then try again.",
     ],
     [
       "unknown",
       NO_KEY,
       "issue-unknown",
+      "alert",
       "We could not verify your Discord membership just now — that is a problem talking to Discord, not a statement about your membership. Please try again shortly.",
     ],
     [
       "failed",
       NO_KEY,
       "issue-failed",
+      "alert",
       "We could not create your key. This is our key service, not your Discord membership. Please try again, and tell us if it keeps happening.",
     ],
     [
       "cancelled",
       NO_KEY,
       "issue-cancelled",
+      "status",
       "You stopped before Discord could check your membership — nothing was created, and nothing is wrong. Pick it up again whenever you like.",
     ],
     [
       "account_mismatch",
       NO_KEY,
       "issue-account-mismatch",
+      "alert",
       "Discord answered for another account than nelly, the one signed in here, so no key was issued. Switch back to nelly on Discord and try again, or sign out and sign in with the other account.",
     ],
-  ])("says ?issue=%s in words, once, and takes it off the address", async (outcome, account, id, words) => {
+  ])("says ?issue=%s in words, once, and takes it off the address", async (outcome, account, id, role, words) => {
     stubHub({ account: () => answer(200, account) });
     renderAt(`/api/dashboard/prices?issue=${outcome}&from=prices`);
     expect((await screen.findByTestId(id)).textContent).toBe(words);
+    // Heard as well as seen: a key, or nothing wrong, as a status; a refusal as an alert.
+    expect(screen.getByRole(role)).toBe(screen.getByTestId(id));
     await settle();
     expect(where).toBe("/dashboard/prices?from=prices");
     // Still on screen for this visit.
@@ -624,6 +639,7 @@ describe("the Prices tab", () => {
     renderAt("/api/dashboard/prices?issue=issued");
     const settling = await screen.findByTestId("issue-settling");
     expect(settling.textContent).toBe("Your key was created, and is taking a moment to appear. Check again");
+    expect(screen.getByRole("status")).toBe(settling);
     // Not a second key for a visitor who has just been given one.
     expect(screen.queryByRole("button", { name: "Get API Key" })).toBeNull();
     expect(screen.queryByText("Not issued")).toBeNull();
@@ -646,6 +662,8 @@ describe("the Prices tab", () => {
     expect(screen.getByTestId("issue-issued").textContent).toMatch(
       /^Welcome! Your API key has been generated\./,
     );
+    expect(screen.getByRole("status")).toBe(screen.getByTestId("issue-issued"));
+    expect(screen.getByRole("alert")).toBe(failed);
 
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     const key = await card("Your API Key is ready");
@@ -735,6 +753,8 @@ describe("the Prices tab", () => {
     renderAt("/api/dashboard/prices");
     const failed = await screen.findByTestId("account-failed");
     expect(failed.textContent).toBe(`Could not load your Prices API key: ${words}.`);
+    // One alert: the usage card's failure is this one's.
+    expect(screen.getByRole("alert")).toBe(failed);
     expect(screen.queryByRole("button", { name: "Get API Key" })).toBeNull();
     expect(within(await card("Rate Limit")).getByTestId("rate-limit-pending").textContent).toBe(
       "Could not load your plan, so its limits are not shown.",

@@ -107,7 +107,7 @@ export function KeyCard({
           the key was made all the same, and without it the failure below reads as a failed
           issue. Where the account doesn't list the key yet, `settling` says so instead. */}
       {outcome === "issued" && (view.state !== "ok" || key?.state === "active") && (
-        <p data-testid="issue-issued">
+        <p data-testid="issue-issued" role="status">
           Welcome! Your API key has been generated. Copy it below and make your first request —
           the Quick Start guide has everything you need.
         </p>
@@ -129,7 +129,7 @@ export function KeyCard({
 
       {/* Issued a moment ago, not listed yet: a wait, and no second "Get API Key". */}
       {settling && (
-        <p data-testid="issue-settling">
+        <p data-testid="issue-settling" role="status">
           Your key was created, and is taking a moment to appear.{" "}
           <button type="button" onClick={onReload}>
             Check again
@@ -490,11 +490,14 @@ function ActiveKey({
       />
       {/* `status`, so the copy is heard as well as seen: the button's label doesn't change. */}
       {copied && <p role="status">Copied.</p>}
+      {/* `alert`, as Prices' failed revoke is: a press that didn't do what it said. */}
       {revealFailure && (
-        <p data-testid="reveal-failed">Could not show your API key: {revealFailure}.</p>
+        <p data-testid="reveal-failed" role="alert">
+          Could not show your API key: {revealFailure}.
+        </p>
       )}
       {copyFailure && (
-        <p>
+        <p role="alert">
           Could not copy your API key: <code>{copyFailure}</code>
         </p>
       )}
@@ -538,7 +541,7 @@ function AccountFailed({ error, onRetry }: { error: unknown; onRetry: () => void
   const signedOut = error instanceof HubError && error.code === "not_signed_in";
   return (
     <>
-      <p data-testid="account-failed">
+      <p data-testid="account-failed" role="alert">
         Could not load your Prices API key: {describeFailure(error)}.
       </p>
       {/* An ended session isn't helped by asking again: a sign-in is the way back. */}
