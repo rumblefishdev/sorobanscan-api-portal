@@ -25,6 +25,7 @@ import {
 import {
   DiscordError,
   SCOPE,
+  createdAt,
   httpDiscord,
   isSnowflake,
   type Discord,
@@ -34,6 +35,7 @@ import { productSecret } from "./product-secret.ts";
 import {
   pricesClient,
   type Caller,
+  type IssueOutcome as PricesIssueOutcome,
   type PricesAnswer,
   type PricesClient,
 } from "./products/prices.ts";
@@ -46,11 +48,14 @@ export const SESSION_TTL_SECONDS = 24 * 60 * 60;
 export const PENDING_TTL_SECONDS = 600;
 
 /**
- * What a round trip to Discord is for. Only `signin` here; it is in both signed halves all the
- * same, so a callback completes the action that was started and no other once there are more.
+ * What a round trip to Discord is for: a sign-in (`GET auth/login`), or a key ("Get API Key", the
+ * form's `POST auth/issue`). It is in both signed halves, so a callback completes the action that
+ * was started and no other: a sign-in's can't issue a key, nor an issue's make a session.
  */
-type Action = "signin";
+type Action = "signin" | "issue";
 const SIGNIN: Action = "signin";
+const ISSUE: Action = "issue";
+const ACTIONS: readonly unknown[] = [SIGNIN, ISSUE];
 
 interface SessionClaims extends Record<string, unknown> {
   /** The Discord account's id: the identity. */
@@ -62,14 +67,26 @@ interface SessionClaims extends Record<string, unknown> {
 interface StateClaims extends Record<string, unknown> {
   action: Action;
   nonce: string;
+  /** An issue's product, by the name in its routes; in both halves, as `action` is. */
+  product?: string;
 }
 /** The half that never leaves the browser: the same nonce, and the PKCE verifier. */
 interface PendingClaims extends StateClaims {
   verifier: string;
+  /** An issue's account: the session's when "Get API Key" was pressed. Never in `state`. */
+  account?: string;
 }
 
-/** Why a sign-in ended without a session, as the sign-in page is told in `?signin=`. */
+/**
+ * Why a round trip ended without what it was for, as the page is told: `?signin=` on the sign-in
+ * page, `?issue=` on an issue's tab.
+ */
 type Refusal = "cancelled" | "failed" | "not_member" | "pending_rules" | "unknown";
+/**
+ * How an issue ended, as its tab is told in `?issue=`: the product's own outcome, or why the
+ * product wasn't asked.
+ */
+type IssueOutcome = PricesIssueOutcome | Refusal | "account_mismatch";
 
 const MEMBER_REFUSALS: Record<Exclude<MemberAnswer, "member">, [Refusal, string]> = {
   not_member: ["not_member", "Discord says the account is not a member of the guild"],
@@ -152,8 +169,16 @@ const noStore: MiddlewareHandler = async (c, next) => {
  *
  * - `GET auth/login` sends the browser to Discord. An `action` other than `signin` is refused
  *   with 400 `unknown_action`.
- * - `GET auth/callback` is where Discord sends it back: a member who has cleared screening gets a
- *   session and goes to `${base}dashboard`; anyone else goes to `${base}login?signin=<reason>`.
+ * - `POST auth/issue`, a form naming `product`, is "Get API Key": with a session, a product the
+ *   settings' `products` name, it sends the browser to Discord with `prompt=none`, for an issue
+ *   bound to the session's account. Without a session 401 `not_signed_in`; another product 400
+ *   `unknown_product`.
+ * - `GET auth/callback` is where Discord sends it back. A sign-in: a member who has cleared
+ *   screening gets a session and goes to `${base}dashboard`; anyone else goes to
+ *   `${base}login?signin=<reason>`. An issue: Discord's account must be the session's, a member
+ *   who has cleared screening, and at least `minAccountAgeMinutes` old; then the product issues,
+ *   and the browser goes to `${base}dashboard/<product>?issue=<outcome>`, the product's outcome
+ *   or why it wasn't asked.
  * - `GET me` says who is signed in: `{authenticated: false}` for nobody, never an error.
  * - `POST auth/logout` ends the session.
  * - `GET <product>/account`, `POST <product>/key/reveal` and `POST <product>/key/revoke` are the
@@ -215,23 +240,38 @@ export function createHub(settings: HubSettings | undefined, deps: HubDeps = {})
     return c.json({ error: "internal" }, 500);
   });
 
-  app.get("/auth/login", (c) => {
-    // Refused, not read as a sign-in: the callback would then complete another action than the
-    // one the visitor confirmed, once there are more. Named once, or not at all.
-    const asked = c.req.queries("action");
-    if (asked !== undefined && (asked.length !== 1 || asked[0] !== SIGNIN)) {
-      return c.json({ error: "unknown_action" }, 400);
-    }
+  /** A product this backend serves, with its client, by the name in its routes. */
+  const served = (name: unknown) => {
+    const client = typeof name === "string" ? products.get(name) : undefined;
+    return client && { name: name as string, client };
+  };
+
+  /**
+   * Sends the browser to Discord for `started`: `state` for Discord to carry back, and the
+   * browser's half, with the PKCE verifier and `browserOnly`, in a cookie; both signed, with one
+   * nonce. `prompt: "none"` skips Discord's consent screen for an account that gave it before.
+   */
+  const toDiscord = (
+    c: Context,
+    started: { action: Action; product?: string },
+    browserOnly: { account?: string } = {},
+    prompt?: "none",
+  ) => {
     const nonce = randomBytes(32).toString("base64url");
     const verifier = randomBytes(32).toString("base64url");
-    const state = signer.sign("state", { action: SIGNIN, nonce }, PENDING_TTL_SECONDS);
+    const state = signer.sign("state", { ...started, nonce }, PENDING_TTL_SECONDS);
     const pending = signer.sign(
       "pending",
-      { action: SIGNIN, nonce, verifier },
+      { ...started, nonce, verifier, ...browserOnly },
       PENDING_TTL_SECONDS,
     );
     const challenge = createHash("sha256").update(verifier).digest("base64url");
-    const to = discord.authorizeUrl({ state, challenge, redirectUri });
+    const to = discord.authorizeUrl({
+      state,
+      challenge,
+      redirectUri,
+      ...(prompt === undefined ? {} : { prompt }),
+    });
     // Set only once there is somewhere to send the browser.
     c.header(
       "Set-Cookie",
@@ -239,6 +279,36 @@ export function createHub(settings: HubSettings | undefined, deps: HubDeps = {})
       { append: true },
     );
     return c.redirect(to, 303);
+  };
+
+  /** The product a form's urlencoded body names, once, if this backend serves it. */
+  const productNamed = async (c: Context) => {
+    const type = c.req.header("content-type")?.split(";")[0]?.trim().toLowerCase();
+    if (type !== "application/x-www-form-urlencoded") return undefined;
+    const named = new URLSearchParams(await c.req.text()).getAll("product");
+    return named.length === 1 ? served(named[0]) : undefined;
+  };
+
+  app.get("/auth/login", (c) => {
+    // Refused, not read as a sign-in: the callback would then complete another action than the
+    // one the visitor confirmed. An issue starts only from `auth/issue`'s `POST`, which a link to
+    // here can't make. Named once, or not at all.
+    const asked = c.req.queries("action");
+    if (asked !== undefined && (asked.length !== 1 || asked[0] !== SIGNIN)) {
+      return c.json({ error: "unknown_action" }, 400);
+    }
+    return toDiscord(c, { action: SIGNIN });
+  });
+
+  // "Get API Key": a form's `POST`, never a link. A `GET` would let any site walk a signed-in
+  // visitor through Discord's silent round trip to a key with one navigation; the `Origin` check
+  // above makes this the page's own. The key is for the session's account, which only the
+  // browser's half names, and the callback holds Discord's answer and the session to it.
+  app.post("/auth/issue", signedIn, async (c) => {
+    const product = await productNamed(c);
+    if (!product) return c.json({ error: "unknown_product" }, 400);
+    const { discordId } = c.get("caller");
+    return toDiscord(c, { action: ISSUE, product: product.name }, { account: discordId }, "none");
   });
 
   app.get("/auth/callback", async (c) => {
@@ -251,14 +321,30 @@ export function createHub(settings: HubSettings | undefined, deps: HubDeps = {})
     c.header("Set-Cookie", clearCookie(PENDING_COOKIE, pendingCookiePath, secure), {
       append: true,
     });
+    const state = signer.verify<StateClaims>("state", c.req.query("state"));
 
+    // Where the browser lands: an issue's tab, or the sign-in page. Read from what the hub signed
+    // when the round trip started, the browser's half first; nothing else is decided by it.
+    const started = pending ?? state;
+    const issuing = started?.action === ISSUE ? served(started.product) : undefined;
+
+    const who = (accountId?: string) => (accountId === undefined ? "" : ` discord:${accountId}`);
+    /** Back on `product`'s tab with `outcome`, logged when it isn't the product's own answer. */
+    const refuseIssue = (
+      product: string,
+      outcome: IssueOutcome,
+      reason: string,
+      accountId?: string,
+    ) => {
+      console.info(`issue_refused ${outcome}${who(accountId)} (${reason})`);
+      return c.redirect(`${base}dashboard/${product}?issue=${outcome}`, 303);
+    };
     const refuse = (outcome: Refusal, reason: string, accountId?: string) => {
-      const who = accountId === undefined ? "" : ` discord:${accountId}`;
-      console.info(`signin_refused ${outcome}${who} (${reason})`);
+      if (issuing) return refuseIssue(issuing.name, outcome, reason, accountId);
+      console.info(`signin_refused ${outcome}${who(accountId)} (${reason})`);
       return c.redirect(`${base}login?signin=${outcome}`, 303);
     };
 
-    const state = signer.verify<StateClaims>("state", c.req.query("state"));
     if (!pending) return refuse("failed", "no sign-in was started in this browser");
     if (!state) return refuse("failed", "the state is missing, edited or expired");
     if (
@@ -268,8 +354,14 @@ export function createHub(settings: HubSettings | undefined, deps: HubDeps = {})
     ) {
       return refuse("failed", "the state belongs to another sign-in");
     }
-    if (pending.action !== SIGNIN || state.action !== SIGNIN) {
+    if (pending.action !== state.action || !ACTIONS.includes(pending.action)) {
       return refuse("failed", "the state is for another action");
+    }
+    if (pending.product !== state.product) {
+      return refuse("failed", "the state is for another product");
+    }
+    if (pending.action === ISSUE && !issuing) {
+      return refuse("failed", "the issue is for a product this backend doesn't serve");
     }
     // Discord's own refusal, most often the visitor pressing Cancel on its consent screen.
     const denied = c.req.query("error");
@@ -282,6 +374,25 @@ export function createHub(settings: HubSettings | undefined, deps: HubDeps = {})
     const code = c.req.query("code");
     if (!code) return refuse("failed", "the callback held no code");
     if (typeof pending.verifier !== "string") return refuse("failed", "the cookie held no verifier");
+
+    // An issue is for the account whose session pressed "Get API Key", while that session lasts:
+    // a sign-in in another tab, or a sign-out, between the press and now is not that account's.
+    let issue: { name: string; client: PricesClient; caller: Caller } | undefined;
+    if (issuing) {
+      const asker = isSnowflake(pending.account) ? pending.account : undefined;
+      if (!asker) return refuse("failed", "the cookie named no account");
+      const session = sessionOf(signer, c);
+      if (!session) return refuse("failed", "the session ended before the key was issued", asker);
+      if (session.id !== asker) {
+        return refuseIssue(
+          issuing.name,
+          "account_mismatch",
+          "the session is another account's than the one that asked",
+          asker,
+        );
+      }
+      issue = { ...issuing, caller: { discordId: session.id, name: session.username } };
+    }
 
     let accessToken: string;
     let user: { id: string; username: string };
@@ -298,6 +409,16 @@ export function createHub(settings: HubSettings | undefined, deps: HubDeps = {})
     if (!isSnowflake(user.id) || typeof user.username !== "string") {
       return refuse("failed", "Discord's account answer held no id or no username");
     }
+    // A visitor who switched Discord accounts since signing in: nothing more is read of the other
+    // account, and its id is not logged.
+    if (issue && user.id !== issue.caller.discordId) {
+      return refuseIssue(
+        issue.name,
+        "account_mismatch",
+        "Discord answered for another account than the session's",
+        issue.caller.discordId,
+      );
+    }
 
     let answer: MemberAnswer;
     try {
@@ -313,6 +434,29 @@ export function createHub(settings: HubSettings | undefined, deps: HubDeps = {})
     }
 
     // The access token ends here: it was read with, and is stored nowhere.
+    if (issue) {
+      // The account's age is a gate on keys only: a new account may sign in and look around.
+      const minutes = settings.minAccountAgeMinutes;
+      if (now() - createdAt(user.id) < minutes * 60_000) {
+        return refuseIssue(
+          issue.name,
+          "too_young",
+          `the account is younger than ${minutes} minutes`,
+          user.id,
+        );
+      }
+      // The product applies its own rules (one key, a cap after a revoke) and logs its outcome.
+      const issued = await issue.client.issue(issue.caller);
+      if (!issued.ok) {
+        return refuseIssue(
+          issue.name,
+          "failed",
+          `Prices gave no outcome: ${issued.error}`,
+          issue.caller.discordId,
+        );
+      }
+      return c.redirect(`${base}dashboard/${issue.name}?issue=${issued.body.outcome}`, 303);
+    }
     const claims: SessionClaims = { id: user.id, username: user.username.slice(0, 64) };
     c.header(
       "Set-Cookie",

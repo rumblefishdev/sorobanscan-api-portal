@@ -2,7 +2,9 @@
  * From stellar-x402's `apps/portal/src/discord.ts` at 4157f642 (Apache-2.0, same organisation).
  * Changed: the callback address is passed with each call instead of fixed; `exchange` hands the
  * granted scopes back for the caller to check; the membership answer is one word, with x402's
- * `decide` (`eligibility.ts`) folded in for `pending`; no `prompt`.
+ * `decide` (`eligibility.ts`) folded in for `pending`; `prompt` only when the caller asks for one
+ * (`none`, for an issue); when an account was made, from its id, as x402's `accountCreatedMs`
+ * (`eligibility.ts`) reads it.
  */
 import type { HubSettings } from "./settings.ts";
 
@@ -17,9 +19,17 @@ const REQUEST_TIMEOUT_MS = 4_000;
 const NOT_MEMBER_CODES = [10_007, 10_004];
 
 const SNOWFLAKE = /^[0-9]{1,20}$/;
+/** Discord's epoch, the start of 2015 (UTC), in milliseconds: an id's time counts from it. */
+const DISCORD_EPOCH_MS = 1_420_070_400_000;
 
 export const isSnowflake = (value: unknown): value is string =>
   typeof value === "string" && SNOWFLAKE.test(value);
+
+/**
+ * When the account with the Discord id `id` was made, in milliseconds since 1970: an id's top 42
+ * bits are its time since Discord's epoch. `id` must be a snowflake ({@link isSnowflake}).
+ */
+export const createdAt = (id: string): number => Number(BigInt(id) >> 22n) + DISCORD_EPOCH_MS;
 
 /**
  * Whether an account is in the guild:
@@ -40,8 +50,16 @@ export class DiscordError extends Error {
 
 /** The four things the hub does at Discord. The token it gets is used and dropped, never kept. */
 export interface Discord {
-  /** Where the browser goes to sign in. */
-  authorizeUrl(p: { state: string; challenge: string; redirectUri: string }): string;
+  /**
+   * Where the browser goes to sign in. With `prompt: "none"` Discord skips its consent screen for
+   * an account that has consented to the same scopes before, and sends the browser straight back.
+   */
+  authorizeUrl(p: {
+    state: string;
+    challenge: string;
+    redirectUri: string;
+    prompt?: "none";
+  }): string;
   /**
    * Exchanges a callback's `code` for an access token, with the scopes Discord granted it.
    * Throws a {@link DiscordError}.
@@ -90,7 +108,7 @@ export function httpDiscord(
   const bearer = (token: string) => ({ headers: { authorization: `Bearer ${token}` } });
 
   return {
-    authorizeUrl({ state, challenge, redirectUri }) {
+    authorizeUrl({ state, challenge, redirectUri, prompt }) {
       const url = new URL(AUTHORIZE_URL);
       url.search = new URLSearchParams({
         response_type: "code",
@@ -100,6 +118,7 @@ export function httpDiscord(
         state,
         code_challenge: challenge,
         code_challenge_method: "S256",
+        ...(prompt === undefined ? {} : { prompt }),
       }).toString();
       return url.toString();
     },

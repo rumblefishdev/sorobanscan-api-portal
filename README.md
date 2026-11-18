@@ -174,6 +174,17 @@ Gateway's throttle) is 503 `prices_busy`, and any other answer that isn't Prices
 `prices_unavailable`. Each key event is logged with `discord:<id>` and the token's `jti`, which
 Prices logs too; never a token, a key or a body.
 
+"Get API Key" is a form `POST` to `/api/hub/auth/issue` with `product=prices`, from the page's
+own origin and with a session; no key is issued at sign-in. It sends the browser through Discord
+again, with `prompt=none`, so an account that consented before comes straight back; `issue` and
+the product are signed into both halves of that round trip, and the account into the browser's.
+At the callback Discord's account must be the session's (else `account_mismatch`, and Prices is
+not asked), a member of Stellar Developers who has cleared screening, and at least
+`MIN_ACCOUNT_AGE_MINUTES` old, read from its id; then Prices' `key/issue` is called with a token
+for `issue`. The browser lands on `/api/dashboard/prices?issue=<outcome>`: Prices' `issued`,
+`has_key`, `capped`, `too_young` or `failed`, or the hub's `not_member`, `pending_rules`,
+`unknown`, `too_young`, `account_mismatch`, `cancelled` or `failed` (Prices out of reach too).
+
 The secret is in AWS Secrets Manager, in `eu-central-1`, as JSON: `{"current": "<base64 of 32
 bytes>"}`, with `"previous"` beside it while it is being changed. The hub signs with `current`;
 Prices accepts either. `HUB_PRICES_TOKEN_SECRET` is its name, `sorobanscan-hub/production/prices-token`
