@@ -194,14 +194,25 @@ its own 20. Each refusal is logged as `issue_refused <outcome>` with the account
 `prices_call_failed issue`, with the account, the `jti` and why.
 
 The secret is in AWS Secrets Manager, in `eu-central-1`, as JSON: `{"current": "<base64 of 32
-bytes>"}`, with `"previous"` beside it while it is being changed. The hub signs with `current`;
-Prices accepts either. `HUB_PRICES_TOKEN_SECRET` is its name, `sorobanscan-hub/production/prices-token`
+bytes>"}`. The hub signs with `current` and ignores a `"previous"` beside it; Prices accepts
+either. `HUB_PRICES_TOKEN_SECRET` is its name, `sorobanscan-hub/production/prices-token`
 unless set. The name, not the value: the value is never in a setting, a file or git, and a value
 given here by mistake (base64 of 32 bytes or more) stops the server without printing it. The
 backend reads the secret through the AWS SDK's default credentials, keeps it 5 minutes and never
 logs it. A read that fails (no credentials, no access, a malformed secret, no answer in 15
 seconds) is logged once as `product_secret_unavailable`, with the reason, and is tried again after
 10 seconds.
+
+Changing the value is Prices' procedure, with its commands: "Changing the value without a gap" in
+`docs/runbooks/hub-contract.md` of `rumblefishdev/stellar-prices-api`. Prices keeps the value it
+read for an execution environment's life, the hub for 5 minutes, so every Prices environment must
+accept the new value before the hub signs with it. In short, four steps, each safe to stop after:
+(1) put the new value as `previous`; (2) recycle Prices' api-handler, so every environment reads
+both; (3) swap them, so the new value is `current` and the old one `previous`, and the hub signs
+with the new one within 5 minutes; (4) after at least 10 minutes, drop the old one and recycle
+again. Writing the new value as `current` in one step, without (1) and (2), leaves the Prices
+environments that still hold the old value refusing every hub call until they are recycled: the
+tab gets 502 `invalid_token`.
 
 Locally the credentials are yours: a profile that may read the secret
 (`secretsmanager:GetSecretValue`), signed in to first if it is an SSO one, named in the command's
