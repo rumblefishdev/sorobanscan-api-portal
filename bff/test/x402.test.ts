@@ -2,33 +2,14 @@ import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { productClient, PRODUCT_TIMEOUT_MS, type Caller } from "../src/products/client.ts";
 import { ACCOUNT_ID } from "./fake-discord.ts";
-import {
-  envelopeOf,
-  FakeProduct,
-  type Answer,
-  type ProductRoute,
-} from "./fake-product.ts";
+import { X402_KEY, x402Usual as usual } from "./fake-x402.ts";
+import { envelopeOf, FakeProduct, type Answer } from "./fake-product.ts";
 
 const NOW = Date.UTC(2026, 10, 18, 12);
 const X402_API = "https://x402-portal.test/hub/v1";
 const X402_SECRET = Buffer.alloc(32, 0x58);
-const X402_KEY = "x402_the-revealed-key-value-0123456789";
 const CALLER: Caller = { discordId: ACCOUNT_ID, name: "member" };
 const envelope = envelopeOf("x402");
-
-/** x402's usual answers: the shapes don't matter to the client, which passes a body on whole. */
-function usual(route: ProductRoute, discordId: string): Record<string, unknown> {
-  switch (route) {
-    case "/account":
-      return { key: { state: "active", can_issue: false } };
-    case "/key/reveal":
-      return { name: `discord-${discordId}-key`, value: X402_KEY };
-    case "/key/revoke":
-      return { revoked: true };
-    case "/key/issue":
-      return { outcome: "issued" };
-  }
-}
 
 let logs: MockInstance[] = [];
 const logged = () =>
