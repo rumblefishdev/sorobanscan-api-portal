@@ -312,20 +312,12 @@ describe("the Prices tab's routes", () => {
     expect(logged()).toBe("");
   });
 
-  it("pass Prices' error codes on as {error}, with its details, never its message", async () => {
+  it("pass Prices' error codes on as {error}, with a revoked key's details, never its message", async () => {
     const revoked = {
       next_eligible_at: "2026-12-01T00:00:00Z",
       revoked_at: "2026-11-02T08:00:00Z",
     };
     const cases: [PricesRoute, () => Answer, number, Record<string, unknown>][] = [
-      ["/key/reveal", envelope(404, "no_key"), 409, { error: "no_key" }],
-      [
-        "/key/reveal",
-        envelope(404, "key_revoked", revoked),
-        409,
-        { error: "key_revoked", details: revoked },
-      ],
-      ["/key/revoke", envelope(404, "no_key"), 409, { error: "no_key" }],
       ["/key/revoke", envelope(502, "key_unavailable"), 502, { error: "key_unavailable" }],
       ["/account", envelope(502, "usage_unavailable"), 502, { error: "usage_unavailable" }],
       ["/account", envelope(500, "internal_error"), 500, { error: "internal_error" }],
@@ -334,9 +326,9 @@ describe("the Prices tab's routes", () => {
       // would read as "not signed in", and a 403 never gets past the CDN.
       ["/account", envelope(401, "invalid_token"), 502, { error: "invalid_token" }],
       ["/key/revoke", envelope(403, "action_not_allowed"), 502, { error: "action_not_allowed" }],
-      // Details that aren't an object are dropped, not passed on.
-      ["/key/reveal", envelope(404, "key_revoked", ["x"]), 409, { error: "key_revoked" }],
-      ["/key/reveal", envelope(404, "key_revoked", "x"), 409, { error: "key_revoked" }],
+      // Details are a revoked key's only: any other code's are dropped, not passed on.
+      ["/key/revoke", envelope(502, "key_unavailable", revoked), 502, { error: "key_unavailable" }],
+      ["/account", envelope(400, "invalid_body", { field: "x" }), 400, { error: "invalid_body" }],
     ];
     for (const [path, answer, status, body] of cases) {
       vi.clearAllMocks();
@@ -356,6 +348,124 @@ describe("the Prices tab's routes", () => {
         failure(route?.act, call, `Prices answered ${answerStatus(answer)} ${body.error}`),
       );
     }
+  });
+
+  // The account's state, not a failure: 409, since the CDN turns a 404 into another page, and
+  // logged as an answer, not a failed call.
+  it("pass a 404 no_key or key_revoked on as 409, logged as an answer", async () => {
+    const revoked = {
+      next_eligible_at: "2026-12-01T00:00:00Z",
+      revoked_at: "2026-11-02T08:00:00Z",
+    };
+    const cases: [PricesRoute, () => Answer, Record<string, unknown>][] = [
+      ["/key/reveal", envelope(404, "no_key"), { error: "no_key" }],
+      ["/key/revoke", envelope(404, "no_key"), { error: "no_key" }],
+      [
+        "/key/reveal",
+        envelope(404, "key_revoked", revoked),
+        { error: "key_revoked", details: revoked },
+      ],
+      [
+        "/key/revoke",
+        envelope(404, "key_revoked", revoked),
+        { error: "key_revoked", details: revoked },
+      ],
+      // `no_key` has no details to pass on.
+      ["/key/reveal", envelope(404, "no_key", revoked), { error: "no_key" }],
+      // Details that aren't an object are dropped, not passed on.
+      ["/key/reveal", envelope(404, "key_revoked", ["x"]), { error: "key_revoked" }],
+      ["/key/reveal", envelope(404, "key_revoked", "x"), { error: "key_revoked" }],
+    ];
+    for (const [path, answer, body] of cases) {
+      vi.clearAllMocks();
+      const hub = startHub();
+      hub.prices.answer(path, answer);
+      const route = ROUTES.find((r) => r.prices === path);
+      const response = await hub.request(route?.path ?? "", { method: route?.method });
+      const what = `${path} ${JSON.stringify(body)}`;
+      expect(response.status, what).toBe(409);
+      const text = await response.text();
+      expect(JSON.parse(text), what).toEqual(body);
+      expect(text, what).not.toContain("say-nothing-of-this");
+
+      const [call] = hub.prices.accepted;
+      expect(logged(), what).toBe(
+        `prices_call_answered ${route?.act} discord:${ACCOUNT_ID} jti:${call?.claims.jti} ` +
+          `(Prices answered 404 ${body.error})`,
+      );
+      expect(console.warn, what).not.toHaveBeenCalled();
+      expect(console.info, what).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  // Any other 404 is not the account's state but a route Prices doesn't have: a fault between the
+  // two backends, which the page must not read as "no key".
+  it("answer any other 404 with 502 prices_unavailable", async () => {
+    for (const code of ["not_found", "unknown_route", "no_account"]) {
+      vi.clearAllMocks();
+      const hub = startHub();
+      hub.prices.answer("/key/reveal", envelope(404, code, { key_id: "k-0001" }));
+      const response = await hub.request("/api/hub/prices/key/reveal", { method: "POST" });
+      expect(response.status, code).toBe(502);
+      expect(await response.json(), code).toEqual({ error: "prices_unavailable" });
+      const [call] = hub.prices.accepted;
+      expect(logged(), code).toBe(failure("reveal", call, `Prices answered 404 ${code}`));
+    }
+  });
+
+  it("answer 502 invalid_token when Prices refuses the hub's token", async () => {
+    // Signed with another secret than the one Prices holds.
+    const hub = startHub({}, { pricesSecret: () => Promise.resolve(Buffer.alloc(32, 0x24)) });
+    const response = await hub.request("/api/hub/prices/account");
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({ error: "invalid_token" });
+    expect(hub.prices.calls).toHaveLength(1);
+    expect(hub.prices.calls[0]?.refused).toBe("a MAC that doesn't verify");
+    expect(hub.prices.accepted).toEqual([]);
+    const { jti } = JSON.parse(
+      Buffer.from(hub.prices.calls[0]?.token.split(".")[1] ?? "", "base64url").toString("utf8"),
+    ) as { jti: string };
+    expect(logged()).toBe(
+      `prices_call_failed read discord:${ACCOUNT_ID} jti:${jti} (Prices answered 401 invalid_token)`,
+    );
+  });
+
+  it("read no secret without a session, without the page's Origin, or for a product not served", async () => {
+    let reads = 0;
+    const counting = () => {
+      reads += 1;
+      return Promise.resolve(PRICES_SECRET);
+    };
+    const hub = startHub({}, { pricesSecret: counting });
+    for (const route of ROUTES) {
+      expect((await hub.request(route.path, { method: route.method, cookie: null })).status).toBe(
+        401,
+      );
+    }
+    for (const route of ROUTES.filter((r) => r.method === "POST")) {
+      const response = await hub.request(route.path, {
+        method: "POST",
+        origin: "https://evil.example",
+      });
+      expect(response.status).toBe(400);
+    }
+    for (const [method, path] of [
+      ["GET", "/api/hub/x402/account"],
+      ["POST", "/api/hub/x402/key/reveal"],
+      ["POST", "/api/hub/x402/key/revoke"],
+    ] as const) {
+      expect((await hub.request(path, { method })).status).toBe(400);
+    }
+    const without = startHub({ products: [] }, { pricesSecret: counting });
+    for (const route of ROUTES) {
+      expect((await without.request(route.path, { method: route.method })).status).toBe(400);
+    }
+    expect(reads).toBe(0);
+    expect([...hub.prices.calls, ...without.prices.calls]).toEqual([]);
+
+    // The same resolver is read for a call that goes through.
+    expect((await hub.request("/api/hub/prices/account")).status).toBe(200);
+    expect(reads).toBe(1);
   });
 
   it("try once more after a 503, with a new token", async () => {
@@ -543,6 +653,46 @@ describe("the Prices tab's routes", () => {
     // An answer in time leaves no timer behind.
     const quick = startHub();
     expect((await quick.request("/api/hub/prices/account")).status).toBe(200);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  // The secret's read can take up to 15 s of its own: with a deadline of its own after it, a call
+  // could take 35 s, past CloudFront's 30 s wait for an origin.
+  it("count the secret's read in the 20 seconds", async () => {
+    vi.useFakeTimers();
+    const slowSecret = () =>
+      new Promise<Buffer>((resolve) => setTimeout(() => resolve(PRICES_SECRET), 15_000));
+    const hub = startHub({}, { pricesSecret: slowSecret });
+    hub.prices.answer("/account", () => "hang");
+    let settled = false;
+    const answered = hub.request("/api/hub/prices/account").finally(() => (settled = true));
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(hub.prices.calls).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(PRICES_TIMEOUT_MS - 15_000 - 1);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    const response = await answered;
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({ error: "prices_unavailable" });
+    expect(hub.prices.calls[0]?.signal?.aborted).toBe(true);
+    expect(logged()).toMatch(/\(Prices did not answer in 20 s\)$/);
+    expect(vi.getTimerCount()).toBe(0);
+
+    // A secret that never comes: 503 product_not_configured at 20 s, and Prices never asked.
+    vi.clearAllMocks();
+    const never = startHub({}, { pricesSecret: () => new Promise<Buffer>(() => {}) });
+    let done = false;
+    const waiting = never.request("/api/hub/prices/account").finally(() => (done = true));
+    await vi.advanceTimersByTimeAsync(PRICES_TIMEOUT_MS - 1);
+    expect(done).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    const unread = await waiting;
+    expect(unread.status).toBe(503);
+    expect(await unread.json()).toEqual({ error: "product_not_configured" });
+    expect(never.prices.calls).toEqual([]);
+    expect(logged()).toBe(
+      `prices_call_failed read discord:${ACCOUNT_ID} (the secret was not read in 20 s)`,
+    );
     expect(vi.getTimerCount()).toBe(0);
   });
 
