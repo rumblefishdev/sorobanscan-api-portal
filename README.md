@@ -157,8 +157,21 @@ For the Prices tab the backend calls Prices' own backend server to server, on Pr
 contract, with a token of its own on each call: `v1.<payload>.<mac>`, the claims' JSON in
 base64url and their HMAC-SHA256 under a secret the hub and Prices share, good for 60 seconds and
 for one act (`read`, `reveal`, `revoke` or `issue`). The format and the test vector both sides pin
-are the shared sign-in spec's decision 15 (`bff/src/token.ts`, `bff/test/token.test.ts`). The
-routes that make those calls are not built yet.
+are the shared sign-in spec's decision 15 (`bff/src/token.ts`, `bff/test/token.test.ts`).
+
+The page calls only the hub's backend (`bff/src/products/prices.ts`):
+`GET /api/hub/prices/account`, `POST /api/hub/prices/key/reveal` and
+`POST /api/hub/prices/key/revoke`, each one call to Prices' `account`, `key/reveal` or
+`key/revoke` with a fresh token. Prices' answer
+is passed on as it is; its error codes as `{"error": "<code>"}`, with its `details`, under its
+status, but for a 404 (`no_key`, `key_revoked`), which is 409, since the CDN turns a 404 into
+another page, and a 401 or 403 (Prices refusing the hub's token), which is 502. Without a session
+they answer 401 `not_signed_in`, for a product not in `HUB_PRODUCTS` 400 `unknown_product`, and
+while the secret can't be read 503 `product_not_configured`. A call gives up after 20 seconds and
+is tried once more on a 503, within those 20 seconds; a 429 without Prices' envelope (API
+Gateway's throttle) is 503 `prices_busy`, and any other answer that isn't Prices' JSON 502
+`prices_unavailable`. Each key event is logged with `discord:<id>` and the token's `jti`, which
+Prices logs too; never a token, a key or a body.
 
 The secret is in AWS Secrets Manager, in `eu-central-1`, as JSON: `{"current": "<base64 of 32
 bytes>"}`, with `"previous"` beside it while it is being changed. The hub signs with `current`;
@@ -166,8 +179,9 @@ Prices accepts either. `HUB_PRICES_TOKEN_SECRET` is its name, `sorobanscan-hub/p
 unless set. The name, not the value: the value is never in a setting, a file or git, and a value
 given here by mistake (base64 of 32 bytes or more) stops the server without printing it. The
 backend reads the secret through the AWS SDK's default credentials, keeps it 5 minutes and never
-logs it. A read that fails (no credentials, no access, a malformed secret) is logged once as
-`product_secret_unavailable`, with the reason, and is tried again after 10 seconds.
+logs it. A read that fails (no credentials, no access, a malformed secret, no answer in 15
+seconds) is logged once as `product_secret_unavailable`, with the reason, and is tried again after
+10 seconds.
 
 Locally the credentials are yours: a profile that may read the secret
 (`secretsmanager:GetSecretValue`), signed in to first if it is an SSO one, named in the command's
