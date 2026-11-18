@@ -269,6 +269,10 @@ describe("the Prices tab", () => {
   });
 
   it("regenerates through Prices' dialog: the typed phrase, then the hub's revoke", async () => {
+    // Five seconds after the revocation's instant, as the hub would answer it: whether a new key
+    // can be had yet, and the deactivation's tense, are read off the clock. Only `Date` is fixed.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-18T12:00:05Z"));
     const fetchMock = stubHub({
       account: () => answer(200, ACTIVE),
       revoke: () => answer(200, REVOCATION),
@@ -296,6 +300,9 @@ describe("the Prices tab", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(within(key).queryByTestId("api-key")).toBeNull();
     expect(within(key).getByTestId("revoked-at").textContent).toBe("18 November 2026, 12:00 UTC");
+    expect(within(key).getByTestId("key-revoked").textContent).toMatch(
+      /It stops working within about half a minute of that instant — until then treat it as live/,
+    );
     expect(within(key).getByTestId("key-cap").textContent).toBe(
       "You can generate a new key from 1 December 2026. Until then you do not have a working key.",
     );
