@@ -180,6 +180,30 @@ export const LOGIN_ROUTE = '/login';
 export const DASHBOARD_ROUTE = '/dashboard';
 
 /**
+ * The hub's sign-in, one for every API (the shared sign-in spec, "The Prices
+ * portal moves in" and the cutover's step 3): where every "Get API Key" and
+ * "Sign in" on these pages goes, and where {@link LOGIN_ROUTE} sends the
+ * browser. Under the bundle's `base`, as the hub's own addresses are, so a
+ * build for another prefix keeps it beside these pages.
+ *
+ * A page of another tree, so a plain `href`, never a router `to`: under this
+ * app's basename a router link would make it `/api/prices-api/api/login…`.
+ *
+ * ⚠️ Never a bare `/api/login`. The explorer answered it with a `301` to
+ * `/api/prices-api/login` before the hub took it over, and a browser that
+ * cached that redirect would come back here and loop; the query makes it a
+ * different URL. The hub's `/login` reads it to send a visitor who is signed
+ * in already to the Prices tab.
+ */
+export const HUB_LOGIN = `${import.meta.env.BASE_URL}login?from=prices`;
+
+/**
+ * The Prices tab of the hub's dashboard, where {@link DASHBOARD_ROUTE} sends
+ * the browser. Same reasons as {@link HUB_LOGIN}.
+ */
+export const HUB_DASHBOARD = `${import.meta.env.BASE_URL}dashboard/prices`;
+
+/**
  * The landing page as an absolute href, for the pages that are NOT it.
  *
  * The navbar's three links name sections of the landing page (`#features`,

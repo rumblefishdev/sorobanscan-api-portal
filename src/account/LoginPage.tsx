@@ -30,6 +30,7 @@ import {
 import { cardBorder } from "../prices/landing/primitives";
 import { theme } from "../prices/theme/theme";
 import { color, font, radius } from "../prices/theme/tokens";
+import { PRODUCTS } from "./products";
 import { SIGN_IN_URL, type Session } from "./session";
 
 /**
@@ -97,15 +98,31 @@ function useSigninOutcome(signedIn: boolean): Refusal | null {
   return outcome;
 }
 
+/**
+ * The dashboard a signed-in visitor goes to from here: the tab of the product `?from=` names, as
+ * the Prices pages send their sign-in here with `?from=prices` (the shared sign-in spec, cutover
+ * step 3), or the dashboard itself. Only a product's name is read, compared whole against
+ * {@link PRODUCTS}, never a path or an address, so the query can't send anyone off the dashboard.
+ * A tab the build keeps shut is the dashboard's to replace.
+ */
+function useDashboardFrom(): string {
+  const [searchParams] = useSearchParams();
+  const from = searchParams.get("from");
+  return (PRODUCTS as readonly (string | null)[]).includes(from)
+    ? `/dashboard/${from}`
+    : "/dashboard";
+}
+
 export function LoginPage({ session }: { session: Session }) {
   const outcome = useSigninOutcome(session.state === "signed_in");
+  const dashboard = useDashboardFrom();
 
   // A signed-in visitor has nothing to do here, unless a round trip has just come back refused.
   // An issue's, left open past the 10 minutes its two halves last, ends here as a sign-in's
   // failure, since the hub can no longer tell what it was for; sent on without a word, the visitor
   // would meet a dashboard that says nothing of the key they asked for.
   if (session.state === "signed_in" && outcome === null) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to={dashboard} replace />;
   }
 
   return (
@@ -122,7 +139,7 @@ export function LoginPage({ session }: { session: Session }) {
         ) : session.state === "failed" ? (
           <SessionFailedCard session={session} />
         ) : session.state === "signed_in" ? (
-          <StillSignedInCard username={session.username} />
+          <StillSignedInCard username={session.username} dashboard={dashboard} />
         ) : (
           <SignInCard outcome={outcome} />
         )}
@@ -168,9 +185,10 @@ export function SessionFailedCard({
 
 /**
  * A signed-in visitor back from a round trip that was refused (see `LoginPage`): their session is
- * as it was, and the dashboard is where to ask for a key again.
+ * as it was, and the dashboard, at `dashboard` (`useDashboardFrom`), is where to ask for a key
+ * again.
  */
-function StillSignedInCard({ username }: { username: string }) {
+function StillSignedInCard({ username, dashboard }: { username: string; dashboard: string }) {
   return (
     <LoginCard
       title="You are still signed in"
@@ -186,7 +204,7 @@ function StillSignedInCard({ username }: { username: string }) {
       </Callout>
       <Button
         component={RouterLink}
-        to="/dashboard"
+        to={dashboard}
         variant="contained"
         fullWidth
         sx={{ minHeight: 48 }}
