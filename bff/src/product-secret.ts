@@ -27,7 +27,10 @@ export const SECRET_READ_DEADLINE_MS = 15 * 1000;
 
 /** The part of Secrets Manager's client the secret is read through; a fake in the tests. */
 export interface SecretsClient {
-  send(command: GetSecretValueCommand): Promise<Pick<GetSecretValueCommandOutput, "SecretString">>;
+  send(
+    command: GetSecretValueCommand,
+    options?: { abortSignal?: AbortSignal },
+  ): Promise<Pick<GetSecretValueCommandOutput, "SecretString">>;
 }
 
 /** Why a secret couldn't be had. Its message names the secret and the reason, never a value. */
@@ -74,16 +77,22 @@ export function productSecret(
       `The secret ${name} in AWS Secrets Manager (${SECRET_REGION}) ${reason}`,
     );
 
-  /** Secrets Manager's answer, or a {@link ProductSecretError} once the deadline has passed. */
+  /**
+   * Secrets Manager's answer, or a {@link ProductSecretError} once the deadline has passed, which
+   * also cancels the request: the SDK would otherwise hold it until its own timeouts.
+   */
   async function fetchText(): Promise<string | undefined> {
     client ??= secretsManager();
-    const asked = client.send(new GetSecretValueCommand({ SecretId: name }));
+    const cancel = new AbortController();
+    const asked = client.send(new GetSecretValueCommand({ SecretId: name }), {
+      abortSignal: cancel.signal,
+    });
     let timer: ReturnType<typeof setTimeout> | undefined;
     const deadline = new Promise<never>((_, reject) => {
-      timer = setTimeout(
-        () => reject(unavailable(`could not be read in ${SECRET_READ_DEADLINE_MS / 1000} s`)),
-        SECRET_READ_DEADLINE_MS,
-      );
+      timer = setTimeout(() => {
+        reject(unavailable(`could not be read in ${SECRET_READ_DEADLINE_MS / 1000} s`));
+        cancel.abort();
+      }, SECRET_READ_DEADLINE_MS);
     });
     try {
       return (await Promise.race([asked, deadline])).SecretString;

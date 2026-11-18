@@ -9,7 +9,7 @@ import { randomBytes } from "node:crypto";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import { mintToken, type Act } from "../token.ts";
 
-/** How long a call to Prices may take, its one retry included. */
+/** How long a call to Prices may take, the secret's read and its one retry included. */
 export const PRICES_TIMEOUT_MS = 20_000;
 
 /** Whom a call is for: the signed-in account, as the session names it. */
@@ -58,7 +58,8 @@ export interface PricesClientOptions {
   api: string;
   /**
    * The secret the tokens are signed with (`productSecret`). When it rejects, the call answers
-   * `product_not_configured` and logs nothing: the reader logged why.
+   * `product_not_configured` and logs nothing: the reader logged why. When it hasn't resolved by
+   * the call's deadline, the same answer, logged here.
    */
   signer: () => Promise<Buffer>;
   fetchImpl?: typeof globalThis.fetch;
@@ -106,6 +107,14 @@ const UNAVAILABLE = { ok: false, status: 502, error: "prices_unavailable" } as c
 
 /** A code as Prices writes its own: snake_case, so it can be passed on and logged as it is. */
 const CODE = /^[a-z][a-z0-9_]{0,63}$/;
+/**
+ * Prices' 404s that are the account's state, not a failure: passed on as 409, since the CDN in
+ * front of the hub turns every 404 into another page. Any other 404 is a route Prices doesn't
+ * have, a fault between the two backends.
+ */
+const KEY_STATES: readonly string[] = ["no_key", "key_revoked"];
+/** The one code whose `details` reach the page: when the key was revoked, when a new one can be. */
+const WITH_DETAILS = "key_revoked";
 
 const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -121,14 +130,35 @@ function envelopeOf(
 /**
  * The status Prices' error is passed on with: Prices' own, but for two kinds. A 401 or 403 is
  * Prices refusing the hub's token or its act, a fault between the two backends and not the
- * visitor's, which the page would otherwise read as "not signed in": 502. A 404 (`no_key`,
- * `key_revoked`) is the account's state: 409, since the CDN in front of the hub turns every 403
- * and 404 into another page.
+ * visitor's, which the page would otherwise read as "not signed in": 502. A 404 is one of
+ * {@link KEY_STATES} by now: 409.
  */
 function passedOn(status: number): ContentfulStatusCode {
   if (status === 401 || status === 403) return 502;
   if (status === 404) return 409;
   return status as ContentfulStatusCode;
+}
+
+/**
+ * `promise`, or a rejection once `signal` aborts, whichever comes first. Its listener goes with
+ * it, and a rejection of `promise` after the abort is taken here, not left unhandled.
+ */
+function beforeAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const aborted = () => reject(signal.reason);
+    if (signal.aborted) aborted();
+    signal.addEventListener("abort", aborted, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", aborted);
+        resolve(value);
+      },
+      (error: unknown) => {
+        signal.removeEventListener("abort", aborted);
+        reject(error);
+      },
+    );
+  });
 }
 
 /** A body as JSON, or `undefined` when it isn't. */
@@ -151,16 +181,24 @@ export function pricesClient({
     caller: Caller,
     { method, path, act, event, holds }: Call,
   ): Promise<PricesAnswer> {
-    let secret: Buffer;
-    try {
-      secret = await signer();
-    } catch {
-      return NOT_CONFIGURED;
-    }
-
+    // One deadline for the whole call, from here: the secret's read can take seconds of its own.
     const controller = new AbortController();
     const deadline = setTimeout(() => controller.abort(), PRICES_TIMEOUT_MS);
     try {
+      let secret: Buffer;
+      try {
+        secret = await beforeAbort(signer(), controller.signal);
+      } catch {
+        // A read that failed was logged by the reader; one still under way has said nothing yet.
+        if (controller.signal.aborted) {
+          console.warn(
+            `prices_call_failed ${act} discord:${caller.discordId} ` +
+              `(the secret was not read in ${PRICES_TIMEOUT_MS / 1000} s)`,
+          );
+        }
+        return NOT_CONFIGURED;
+      }
+
       for (let attempt = 1; ; attempt += 1) {
         // A token for each request, a retry's too: one token, one call.
         const jti = randomBytes(16).toString("base64url");
@@ -217,18 +255,21 @@ export function pricesClient({
           console.warn(`prices_call_retried ${about} (${said})`);
           continue;
         }
-        if (envelope) {
-          return failed(
-            {
-              ok: false,
-              status: passedOn(status),
-              error: envelope.code,
-              ...(envelope.details ? { details: envelope.details } : {}),
-            },
-            said,
-          );
-        }
-        return failed(status === 429 ? BUSY : UNAVAILABLE, said);
+        if (!envelope) return failed(status === 429 ? BUSY : UNAVAILABLE, said);
+        const keyState = status === 404 && KEY_STATES.includes(envelope.code);
+        if (status === 404 && !keyState) return failed(UNAVAILABLE, said);
+        const answer: PricesAnswer = {
+          ok: false,
+          status: passedOn(status),
+          error: envelope.code,
+          ...(envelope.code === WITH_DETAILS && envelope.details
+            ? { details: envelope.details }
+            : {}),
+        };
+        if (!keyState) return failed(answer, said);
+        // The account has no key to show or revoke: an answer, not a failed call.
+        console.info(`prices_call_answered ${about} (${said})`);
+        return answer;
       }
     } finally {
       clearTimeout(deadline);

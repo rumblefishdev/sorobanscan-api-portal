@@ -415,6 +415,43 @@ describe("the product secret", () => {
     }
   });
 
+  // Given up on is not enough: the SDK's request would hold its socket until its own timeouts.
+  it("cancels the request to Secrets Manager it gave up on", async () => {
+    vi.useFakeTimers();
+    try {
+      const signals: (AbortSignal | undefined)[] = [];
+      const client: SecretsClient = {
+        send(_command, options) {
+          signals.push(options?.abortSignal);
+          return new Promise(() => {});
+        },
+      };
+      const read = rejectionOf(productSecret(NAME, client, clock().now)());
+      await vi.advanceTimersByTimeAsync(SECRET_READ_DEADLINE_MS - 1);
+      expect(signals).toHaveLength(1);
+      expect(signals[0]).toBeInstanceOf(AbortSignal);
+      expect(signals[0]?.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(await read).toBeInstanceOf(ProductSecretError);
+      expect(signals[0]?.aborted).toBe(true);
+
+      // A read that settles in time is never cancelled.
+      const { client: quick } = fakeSecrets(SECRET_STRING);
+      const given: (AbortSignal | undefined)[] = [];
+      const watched: SecretsClient = {
+        send(command, options) {
+          given.push(options?.abortSignal);
+          return quick.send(command, options);
+        },
+      };
+      await productSecret(NAME, watched, clock().now)();
+      await vi.advanceTimersByTimeAsync(SECRET_READ_DEADLINE_MS);
+      expect(given[0]?.aborted).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("leaves no timer behind once a read has settled", async () => {
     vi.useFakeTimers();
     try {

@@ -163,12 +163,13 @@ The page calls only the hub's backend (`bff/src/products/prices.ts`):
 `GET /api/hub/prices/account`, `POST /api/hub/prices/key/reveal` and
 `POST /api/hub/prices/key/revoke`, each one call to Prices' `account`, `key/reveal` or
 `key/revoke` with a fresh token. Prices' answer
-is passed on as it is; its error codes as `{"error": "<code>"}`, with its `details`, under its
-status, but for a 404 (`no_key`, `key_revoked`), which is 409, since the CDN turns a 404 into
-another page, and a 401 or 403 (Prices refusing the hub's token), which is 502. Without a session
-they answer 401 `not_signed_in`, for a product not in `HUB_PRODUCTS` 400 `unknown_product`, and
-while the secret can't be read 503 `product_not_configured`. A call gives up after 20 seconds and
-is tried once more on a 503, within those 20 seconds; a 429 without Prices' envelope (API
+is passed on as it is; its error codes as `{"error": "<code>"}` under its status (with its
+`details` for `key_revoked` only), but for a 404 `no_key` or `key_revoked`, which is 409, since the
+CDN turns a 404 into another page, and a 401 or 403 (Prices refusing the hub's token), which is
+502; any other 404 is 502 `prices_unavailable`. Without a session they answer 401 `not_signed_in`,
+for a product not in `HUB_PRODUCTS` 400 `unknown_product`, and while the secret can't be read 503
+`product_not_configured`. A call gives up 20 seconds after it started, the secret's read included,
+and is tried once more on a 503, within those 20 seconds; a 429 without Prices' envelope (API
 Gateway's throttle) is 503 `prices_busy`, and any other answer that isn't Prices' JSON 502
 `prices_unavailable`. Each key event is logged with `discord:<id>` and the token's `jti`, which
 Prices logs too; never a token, a key or a body.
