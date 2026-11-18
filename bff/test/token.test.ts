@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } fr
 import {
   FAILURE_TTL_MS,
   ProductSecretError,
+  SECRET_READ_DEADLINE_MS,
   SECRET_TTL_MS,
   productSecret,
   secretsManager,
@@ -182,21 +183,28 @@ describe("the product secret", () => {
   /**
    * Secrets Manager in memory: each read takes the next answer, the last one again once they run
    * out. A string is the secret's text, `undefined` a secret with no text (a binary one), an error
-   * what the SDK throws.
+   * what the SDK throws. Every command sent is kept as it came, for the test to check: an
+   * assertion inside `send` would be caught by the read and turned into a failed read.
    */
   function fakeSecrets(...answers: Answer[]) {
-    const asked: GetSecretValueCommandInput[] = [];
+    const sent: unknown[] = [];
     const client: SecretsClient = {
       async send(command) {
-        expect(command).toBeInstanceOf(GetSecretValueCommand);
-        asked.push(command.input);
+        sent.push(command);
         const answer = answers.length > 1 ? answers.shift() : answers[0];
         if (answer instanceof Error) throw answer;
         return { SecretString: answer };
       },
     };
-    return { client, asked };
+    return { client, sent };
   }
+
+  /** What each command sent asked for, after checking it is a `GetSecretValue`. */
+  const inputsOf = (sent: unknown[]): GetSecretValueCommandInput[] =>
+    sent.map((command) => {
+      expect(command).toBeInstanceOf(GetSecretValueCommand);
+      return (command as GetSecretValueCommand).input;
+    });
 
   /** A clock the test moves. */
   function clock() {
@@ -219,10 +227,10 @@ describe("the product secret", () => {
     Object.assign(new Error(`${name}: the SDK's own words, say-nothing-of-this`), { name });
 
   it("is the named secret's current value, 32 bytes, read from Secrets Manager", async () => {
-    const { client, asked } = fakeSecrets(SECRET_STRING);
+    const { client, sent } = fakeSecrets(SECRET_STRING);
     const secret = await productSecret(NAME, client)();
     expect(secret.equals(CURRENT)).toBe(true);
-    expect(asked).toEqual([{ SecretId: NAME }]);
+    expect(inputsOf(sent)).toEqual([{ SecretId: NAME }]);
     expect(logged()).toBe("");
   });
 
@@ -254,9 +262,10 @@ describe("the product secret", () => {
       ["a line break after it", JSON.stringify({ current: `${fill(32)}\n` })],
       ["a space before it", JSON.stringify({ current: ` ${fill(32)}` })],
     ] as const) {
-      const { client } = fakeSecrets(text);
+      const { client, sent } = fakeSecrets(text);
       const error = await rejectionOf(productSecret(NAME, client)());
       expect(error, what).toBeInstanceOf(ProductSecretError);
+      expect(inputsOf(sent), what).toEqual([{ SecretId: NAME }]);
       expect(shown(error), what).toContain(NAME);
       for (const marker of markers) {
         expect(shown(error), what).not.toContain(marker);
@@ -272,9 +281,10 @@ describe("the product secret", () => {
       "ResourceNotFoundException",
       "ExpiredTokenException",
     ]) {
-      const { client } = fakeSecrets(sdkError(name));
+      const { client, sent } = fakeSecrets(sdkError(name));
       const error = await rejectionOf(productSecret(NAME, client)());
       expect(error, name).toBeInstanceOf(ProductSecretError);
+      expect(inputsOf(sent), name).toEqual([{ SecretId: NAME }]);
       expect((error as Error).message, name).toContain(NAME);
       expect((error as Error).message, name).toContain(name);
       expect(shown(error), name).not.toContain("say-nothing-of-this");
@@ -283,11 +293,12 @@ describe("the product secret", () => {
   });
 
   it("logs each failed read once, naming the secret and the reason", async () => {
-    const { client } = fakeSecrets(sdkError("CredentialsProviderError"));
+    const { client, sent } = fakeSecrets(sdkError("CredentialsProviderError"));
     const time = clock();
     const secret = productSecret(NAME, client, time.now);
     await rejectionOf(secret());
     await rejectionOf(secret());
+    expect(inputsOf(sent)).toEqual([{ SecretId: NAME }]);
     const lines = logged().split("\n");
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatch(/^product_secret_unavailable .*CredentialsProviderError/);
@@ -296,7 +307,7 @@ describe("the product secret", () => {
 
   it("is kept for five minutes, then read again, so a new current is taken up", async () => {
     const next = Buffer.alloc(32, 0x3c);
-    const { client, asked } = fakeSecrets(
+    const { client, sent } = fakeSecrets(
       SECRET_STRING,
       JSON.stringify({ current: next.toString("base64"), previous: CURRENT.toString("base64") }),
     );
@@ -306,11 +317,11 @@ describe("the product secret", () => {
     expect((await secret()).equals(CURRENT)).toBe(true);
     time.advance(SECRET_TTL_MS - 1);
     expect((await secret()).equals(CURRENT)).toBe(true);
-    expect(asked).toHaveLength(1);
+    expect(inputsOf(sent)).toEqual([{ SecretId: NAME }]);
 
     time.advance(1);
     expect((await secret()).equals(next)).toBe(true);
-    expect(asked).toHaveLength(2);
+    expect(inputsOf(sent)).toEqual([{ SecretId: NAME }, { SecretId: NAME }]);
     expect(SECRET_TTL_MS).toBe(5 * 60 * 1000);
     expect(logged()).toBe("");
   });
@@ -335,38 +346,99 @@ describe("the product secret", () => {
   // Credentials expired locally, or Secrets Manager out of reach: the next try is at most 10 s
   // away, and the calls in between don't each wait on AWS.
   it("keeps a failure for at most 10 seconds, then reads again", async () => {
-    const { client, asked } = fakeSecrets(sdkError("ExpiredTokenException"), SECRET_STRING);
+    const { client, sent } = fakeSecrets(sdkError("ExpiredTokenException"), SECRET_STRING);
     const time = clock();
     const secret = productSecret(NAME, client, time.now);
 
     await rejectionOf(secret());
     time.advance(FAILURE_TTL_MS - 1);
     expect(await rejectionOf(secret())).toBeInstanceOf(ProductSecretError);
-    expect(asked).toHaveLength(1);
+    expect(inputsOf(sent)).toHaveLength(1);
 
     time.advance(1);
     expect((await secret()).equals(CURRENT)).toBe(true);
-    expect(asked).toHaveLength(2);
+    expect(inputsOf(sent)).toEqual([{ SecretId: NAME }, { SecretId: NAME }]);
     expect(FAILURE_TTL_MS).toBeLessThanOrEqual(10_000);
   });
 
   it("reads a malformed secret again too, once it's fixed", async () => {
-    const { client, asked } = fakeSecrets(JSON.stringify({ current: "nope" }), SECRET_STRING);
+    const { client, sent } = fakeSecrets(JSON.stringify({ current: "nope" }), SECRET_STRING);
     const time = clock();
     const secret = productSecret(NAME, client, time.now);
     expect(await rejectionOf(secret())).toBeInstanceOf(ProductSecretError);
     time.advance(FAILURE_TTL_MS);
     expect((await secret()).equals(CURRENT)).toBe(true);
-    expect(asked).toHaveLength(2);
+    expect(inputsOf(sent)).toEqual([{ SecretId: NAME }, { SecretId: NAME }]);
+  });
+
+  // AWS credentials that never resolve (an SSO login waiting on a browser, a metadata endpoint
+  // that drops packets) would otherwise hold the read, and every call to the product after it,
+  // for good: the cache keeps a read under way for as long as it lasts.
+  it("gives up on a read that hasn't settled in 15 seconds, and reads again 10 seconds later", async () => {
+    vi.useFakeTimers();
+    try {
+      const sent: unknown[] = [];
+      const answers: (() => Promise<{ SecretString: string }>)[] = [
+        () => new Promise(() => {}),
+        async () => ({ SecretString: SECRET_STRING }),
+      ];
+      const client: SecretsClient = {
+        send(command) {
+          sent.push(command);
+          return (answers.shift() ?? (() => new Promise(() => {})))();
+        },
+      };
+      const time = clock();
+      const secret = productSecret(NAME, client, time.now);
+
+      let settled = false;
+      const first = rejectionOf(secret()).finally(() => (settled = true));
+      await vi.advanceTimersByTimeAsync(SECRET_READ_DEADLINE_MS - 1);
+      expect(settled).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      const error = await first;
+      expect(error).toBeInstanceOf(ProductSecretError);
+      expect((error as Error).message).toContain(NAME);
+      expect((error as Error).message).toMatch(/15 s/);
+      expect(logged()).toMatch(/^product_secret_unavailable .*15 s/);
+      expect(SECRET_READ_DEADLINE_MS).toBe(15_000);
+
+      // A failure like any other: answered from memory, then read again.
+      time.advance(FAILURE_TTL_MS - 1);
+      expect(await rejectionOf(secret())).toBe(error);
+      expect(inputsOf(sent)).toHaveLength(1);
+      time.advance(1);
+      expect((await secret()).equals(CURRENT)).toBe(true);
+      expect(inputsOf(sent)).toEqual([{ SecretId: NAME }, { SecretId: NAME }]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("leaves no timer behind once a read has settled", async () => {
+    vi.useFakeTimers();
+    try {
+      const { client } = fakeSecrets(SECRET_STRING, sdkError("AccessDeniedException"));
+      const time = clock();
+      const secret = productSecret(NAME, client, time.now);
+      await secret();
+      expect(vi.getTimerCount()).toBe(0);
+      time.advance(SECRET_TTL_MS);
+      await rejectionOf(secret());
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("never shows the secret it read", async () => {
-    const { client } = fakeSecrets(SECRET_STRING, sdkError("AccessDeniedException"));
+    const { client, sent } = fakeSecrets(SECRET_STRING, sdkError("AccessDeniedException"));
     const time = clock();
     const secret = productSecret(NAME, client, time.now);
     await secret();
     time.advance(SECRET_TTL_MS);
     const error = await rejectionOf(secret());
+    expect(inputsOf(sent)).toEqual([{ SecretId: NAME }, { SecretId: NAME }]);
     for (const form of [...forms(CURRENT), ...forms(PREVIOUS)]) {
       expect(logged()).not.toContain(form);
       expect(shown(error)).not.toContain(form);
