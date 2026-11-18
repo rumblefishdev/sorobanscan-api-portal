@@ -30,6 +30,8 @@ const SETTINGS: HubSettings = {
   guildId: "897514728459468821",
   pricesTokenSecretName: "sorobanscan-hub/production/prices-token",
   pricesHubApi: PRICES_API,
+  x402TokenSecretName: "sorobanscan-hub/production/x402-token",
+  x402HubApi: "https://x402-portal.sorobanscan.com/api/hub/v1",
   products: ["prices"],
   minAccountAgeMinutes: 5,
 };

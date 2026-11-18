@@ -17,6 +17,10 @@ export type HubSettings = {
   pricesTokenSecretName: string;
   /** Prices' hub contract, with no trailing slash: a call goes to `${pricesHubApi}/account`. */
   pricesHubApi: string;
+  /** The name, in AWS Secrets Manager, of the secret the tokens to x402 are signed with. */
+  x402TokenSecretName: string;
+  /** x402's hub contract, with no trailing slash, as `pricesHubApi` is. */
+  x402HubApi: string;
   /** The products whose routes answer, by name: the backend's own allowlist. */
   products: string[];
   /** How old a Discord account must be, in minutes, to be issued a key. */
@@ -29,8 +33,14 @@ export const STELLAR_DEVELOPERS_GUILD = "897514728459468821";
 const PRICES_TOKEN_SECRET_NAME = "sorobanscan-hub/production/prices-token";
 /** Production Prices' hub contract. */
 const PRICES_HUB_API = "https://prices-api.sorobanscan.com/api/hub/v1";
+/** Production's secret for the tokens to x402. */
+const X402_TOKEN_SECRET_NAME = "sorobanscan-hub/production/x402-token";
+/** Production x402's hub contract. */
+const X402_HUB_API = "https://x402-portal.sorobanscan.com/api/hub/v1";
 /** The products this backend has routes for. */
-const KNOWN_PRODUCTS: readonly string[] = ["prices"];
+const KNOWN_PRODUCTS: readonly string[] = ["prices", "x402"];
+/** The products served when `HUB_PRODUCTS` is unset: Prices alone, x402 is opt-in. */
+const DEFAULT_PRODUCTS: readonly string[] = ["prices"];
 const DEFAULT_MIN_ACCOUNT_AGE_MINUTES = 5;
 const MIN_SECRET_BYTES = 32;
 
@@ -64,7 +74,7 @@ export const missingSettings = (env: Record<string, string | undefined>): string
  * The settings from `env`: `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `HUB_SESSION_SECRET`
  * (base64 of at least 32 bytes) and `HUB_PUBLIC_ORIGIN`, and the optional `DISCORD_GUILD_ID`
  * (Stellar Developers), `HUB_PRICES_TOKEN_SECRET` (the secret's name in Secrets Manager),
- * `PRICES_HUB_API`, `HUB_PRODUCTS` (a comma list, `prices`) and `MIN_ACCOUNT_AGE_MINUTES` (5),
+ * `PRICES_HUB_API`, `HUB_X402_TOKEN_SECRET`, `X402_HUB_API`, `HUB_PRODUCTS` (a comma list, `prices`) and `MIN_ACCOUNT_AGE_MINUTES` (5),
  * each production's by default and when empty. Every value present is checked first, so a
  * malformed one throws whether or not the others are set, naming the setting and never repeating
  * a secret. Then `undefined` when one of the four is missing or empty: sign-in is not configured.
@@ -109,7 +119,21 @@ export function readSettings(
     );
   }
 
-  const productList = env.HUB_PRODUCTS || KNOWN_PRODUCTS.join(",");
+  const x402TokenSecretName = env.HUB_X402_TOKEN_SECRET || X402_TOKEN_SECRET_NAME;
+  if (!SECRET_NAME.test(x402TokenSecretName) || isSecretValue(x402TokenSecretName)) {
+    throw new Error(
+      `HUB_X402_TOKEN_SECRET must be a secret's name in AWS Secrets Manager, as "${X402_TOKEN_SECRET_NAME}" is, not the secret's value`,
+    );
+  }
+
+  const x402HubApi = env.X402_HUB_API || X402_HUB_API;
+  if (!isApiBase(x402HubApi)) {
+    throw new Error(
+      `X402_HUB_API must be an https URL with no user, query, fragment or trailing slash, as "${X402_HUB_API}" is (http on this machine only)`,
+    );
+  }
+
+  const productList = env.HUB_PRODUCTS || DEFAULT_PRODUCTS.join(",");
   const products = productList.split(",").map((name) => name.trim());
   if (!products.every((name) => KNOWN_PRODUCTS.includes(name))) {
     throw new Error(
@@ -138,6 +162,8 @@ export function readSettings(
     guildId,
     pricesTokenSecretName,
     pricesHubApi,
+    x402TokenSecretName,
+    x402HubApi,
     products,
     minAccountAgeMinutes: Number(age),
   };

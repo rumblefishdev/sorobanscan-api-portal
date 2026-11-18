@@ -33,12 +33,12 @@ import {
 } from "./discord.ts";
 import { productSecret } from "./product-secret.ts";
 import {
-  pricesClient,
+  productClient,
   type Caller,
-  type IssueOutcome as PricesIssueOutcome,
-  type PricesAnswer,
-  type PricesClient,
-} from "./products/prices.ts";
+  type IssueOutcome as ProductIssueOutcome,
+  type ProductAnswer,
+  type ProductClient,
+} from "./products/client.ts";
 import type { HubSettings } from "./settings.ts";
 import { tokens, type Tokens } from "./tokens.ts";
 
@@ -92,7 +92,7 @@ type Refusal = "cancelled" | "failed" | "not_member" | "pending_rules" | "unknow
  * How an issue ended, as its tab is told in `?issue=`: the product's own outcome, or why the
  * product wasn't asked.
  */
-type IssueOutcome = PricesIssueOutcome | Refusal | "account_mismatch";
+type IssueOutcome = ProductIssueOutcome | Refusal | "account_mismatch";
 
 const MEMBER_REFUSALS: Record<Exclude<MemberAnswer, "member">, [Refusal, string]> = {
   not_member: ["not_member", "Discord says the account is not a member of the guild"],
@@ -107,6 +107,8 @@ export interface HubDeps {
   fetch?: typeof globalThis.fetch;
   /** The secret the tokens to Prices are signed with: read from Secrets Manager unless given. */
   pricesSecret?: () => Promise<Buffer>;
+  /** The same for x402. */
+  x402Secret?: () => Promise<Buffer>;
 }
 
 /** What {@link requireSession} gives the routes after it: the signed-in account. */
@@ -136,7 +138,7 @@ export const requireSession =
   };
 
 /** A product's answer as the page reads it: Prices' body, or `{error, details?}`. */
-const answered = (c: Context, answer: PricesAnswer) =>
+const answered = (c: Context, answer: ProductAnswer) =>
   answer.ok
     ? c.json(answer.body, 200)
     : c.json(
@@ -188,7 +190,7 @@ const noStore: MiddlewareHandler = async (c, next) => {
  * - `GET me` says who is signed in: `{authenticated: false}` for nobody, never an error.
  * - `POST auth/logout` ends the session.
  * - `GET <product>/account`, `POST <product>/key/reveal` and `POST <product>/key/revoke` are the
- *   product's own calls for the signed-in account (`products/prices.ts`), answered with the
+ *   product's own calls for the signed-in account (`products/client.ts`), answered with the
  *   product's body or `{error, details?}`. Without a session 401 `not_signed_in`; a product not in
  *   the settings' `products` 400 `unknown_product`; its secret out of reach 503
  *   `product_not_configured`.
@@ -210,16 +212,36 @@ export function createHub(settings: HubSettings | undefined, deps: HubDeps = {})
   const discord = deps.discord ?? httpDiscord(settings);
   const signer = tokens(settings.sessionSecret, now);
   const signedIn = requireSession(signer);
-  // Asks AWS nothing until a call to Prices needs the secret.
-  const prices = pricesClient({
-    api: settings.pricesHubApi,
-    signer: deps.pricesSecret ?? productSecret(settings.pricesTokenSecretName),
-    fetchImpl: deps.fetch,
-    now,
-  });
-  /** The products whose routes answer, by the name in the path. A `Map`: no inherited names. */
-  const products = new Map<string, PricesClient>(
-    settings.products.includes("prices") ? [["prices", prices]] : [],
+  /** Each product: its words in a log line, its API and the secret its tokens are signed with. */
+  const PRODUCTS = {
+    prices: {
+      label: "Prices",
+      api: settings.pricesHubApi,
+      signer: deps.pricesSecret ?? productSecret(settings.pricesTokenSecretName),
+    },
+    x402: {
+      label: "x402",
+      api: settings.x402HubApi,
+      signer: deps.x402Secret ?? productSecret(settings.x402TokenSecretName),
+    },
+  } as const;
+  /**
+   * The products whose routes answer, by the name in the path, each a client of its own. A `Map`:
+   * no inherited names. A secret is read (from AWS) when a call needs it, and one product's is
+   * out of reach for that product only.
+   */
+  const products = new Map<string, ProductClient>(
+    (Object.keys(PRODUCTS) as (keyof typeof PRODUCTS)[])
+      .filter((name) => settings.products.includes(name))
+      .map((name) => [
+        name,
+        productClient({
+          ...PRODUCTS[name],
+          product: name,
+          fetchImpl: deps.fetch,
+          now,
+        }),
+      ]),
   );
   const secure = secureCookies(publicOrigin);
   const sessionCookiePath = sessionPath(base);
@@ -245,6 +267,10 @@ export function createHub(settings: HubSettings | undefined, deps: HubDeps = {})
     console.error(`request_failed ${error.name} ${c.req.method} ${routePath(c)}`);
     return c.json({ error: "internal" }, 500);
   });
+
+  /** A product's name in a log line's words. */
+  const labelOf = (name: string) =>
+    (PRODUCTS as Record<string, { label: string } | undefined>)[name]?.label ?? name;
 
   /** A product this backend serves, with its client, by the name in its routes. */
   const served = (name: unknown) => {
@@ -405,7 +431,7 @@ export function createHub(settings: HubSettings | undefined, deps: HubDeps = {})
 
     // An issue is for the account whose session pressed "Get API Key", while that session lasts:
     // a sign-in in another tab, or a sign-out, between the press and now is not that account's.
-    let issue: { name: string; client: PricesClient; caller: Caller } | undefined;
+    let issue: { name: string; client: ProductClient; caller: Caller } | undefined;
     if (issuing) {
       const asker = isSnowflake(pending.account) ? pending.account : undefined;
       if (!asker) return refuse("failed", "the cookie named no account");
@@ -473,14 +499,14 @@ export function createHub(settings: HubSettings | undefined, deps: HubDeps = {})
           user.id,
         );
       }
-      // Prices gets what Discord's steps left of the callback's deadline.
+      // The product gets what Discord's steps left of the callback's deadline.
       const left = ISSUE_CALLBACK_TIMEOUT_MS - (now() - arrived);
       if (left <= 0) {
         const budget = `${ISSUE_CALLBACK_TIMEOUT_MS / 1000} s`;
         return refuseIssue(
           issue.name,
           "failed",
-          `Discord took the callback's ${budget}, so Prices was not asked`,
+          `Discord took the callback's ${budget}, so ${labelOf(issue.name)} was not asked`,
         );
       }
       // The product applies its own rules (one key, a cap after a revoke). The client logs its
@@ -513,7 +539,7 @@ export function createHub(settings: HubSettings | undefined, deps: HubDeps = {})
 
   /** A product's call for the signed-in account, once the product is one this backend serves. */
   const proxied =
-    (call: (client: PricesClient, caller: Caller) => Promise<PricesAnswer>) =>
+    (call: (client: ProductClient, caller: Caller) => Promise<ProductAnswer>) =>
     async (c: Context<SessionEnv>) => {
       const client = products.get(c.req.param("product") ?? "");
       if (!client) return c.json({ error: "unknown_product" }, 400);

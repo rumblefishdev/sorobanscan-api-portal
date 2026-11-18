@@ -10,6 +10,7 @@ import {
 import { createdAt, httpDiscord } from "../src/discord.ts";
 import { missingSettings, readSettings, type HubSettings } from "../src/settings.ts";
 import { tokens } from "../src/tokens.ts";
+import { FakeProduct, type ProductRoute } from "./fake-product.ts";
 import { ACCOUNT_ID, BOTH_SCOPES, FakeDiscord } from "./fake-discord.ts";
 import {
   envelope,
@@ -34,6 +35,8 @@ const SETTINGS: HubSettings = {
   guildId: GUILD,
   pricesTokenSecretName: "sorobanscan-hub/production/prices-token",
   pricesHubApi: "https://prices-api.sorobanscan.com/api/hub/v1",
+  x402TokenSecretName: "sorobanscan-hub/production/x402-token",
+  x402HubApi: "https://x402-portal.sorobanscan.com/api/hub/v1",
   products: ["prices"],
   minAccountAgeMinutes: 5,
 };
@@ -395,7 +398,7 @@ describe("the settings", () => {
   });
 
   it("refuse products this backend doesn't serve, and an age that isn't whole minutes", () => {
-    for (const products of ["price", "Prices", "prices,", "prices;x402", "x402", ",prices"]) {
+    for (const products of ["price", "Prices", "prices,", "prices;x402", "x402,", ",prices", "x402 prices"]) {
       expect(() => readSettings({ ...ENV, HUB_PRODUCTS: products }, "/api/"), products).toThrow(
         /HUB_PRODUCTS/,
       );
@@ -1665,3 +1668,205 @@ function discordApi(memberAnswer: () => Response | Error) {
   }) as typeof globalThis.fetch;
   return { fetch, calls };
 }
+
+describe("x402, by opt-in", () => {
+  const ENV = {
+    DISCORD_CLIENT_ID: "1234567890",
+    DISCORD_CLIENT_SECRET: "the-client-secret",
+    HUB_SESSION_SECRET: Buffer.alloc(32, 9).toString("base64"),
+    HUB_PUBLIC_ORIGIN: PUBLIC_ORIGIN,
+  };
+  const X402_API = "https://x402-portal.test/api/hub/v1";
+  const X402_SECRET = Buffer.alloc(32, 0x58);
+  const X402_KEY = "x402_the-revealed-key-value-0123456789";
+
+  function x402Usual(route: ProductRoute, discordId: string): Record<string, unknown> {
+    switch (route) {
+      case "/account":
+        return { key: { state: "active", can_issue: false } };
+      case "/key/reveal":
+        return { name: `discord-${discordId}-key`, value: X402_KEY };
+      case "/key/revoke":
+        return { revoked: true };
+      case "/key/issue":
+        return { outcome: "issued" };
+    }
+  }
+
+  /** A hub with both products' fakes behind one `fetch`, each told apart by its API. */
+  function startBoth(settings: Partial<HubSettings> = {}, deps: HubDeps = {}) {
+    const clock = { now: NOW };
+    const x402 = new FakeProduct(() => clock.now, {
+      product: "x402",
+      label: "x402",
+      api: X402_API,
+      secret: X402_SECRET,
+      usual: x402Usual,
+    });
+    // Prices' fake is the one `startHub` makes: its `fetch` is the fallback.
+    const base = startHub(
+      { products: ["prices", "x402"], x402HubApi: X402_API, ...settings },
+      {
+        x402Secret: () => Promise.resolve(X402_SECRET),
+        fetch: (input, init) =>
+          String(input).startsWith(X402_API)
+            ? x402.fetch(input, init)
+            : base.prices.fetch(input, init),
+        ...deps,
+      },
+    );
+    return { ...base, x402 };
+  }
+
+  it("has its settings' defaults, and leaves Prices alone when HUB_PRODUCTS is unset", () => {
+    const settings = readSettings(ENV, "/api/");
+    expect(settings).toMatchObject({
+      x402TokenSecretName: "sorobanscan-hub/production/x402-token",
+      x402HubApi: "https://x402-portal.sorobanscan.com/api/hub/v1",
+      products: ["prices"],
+    });
+    expect(readSettings({ ...ENV, HUB_PRODUCTS: "prices,x402" }, "/api/")?.products).toEqual([
+      "prices",
+      "x402",
+    ]);
+    expect(readSettings({ ...ENV, HUB_PRODUCTS: " x402 " }, "/api/")?.products).toEqual(["x402"]);
+    expect(
+      readSettings(
+        {
+          ...ENV,
+          HUB_X402_TOKEN_SECRET: "sorobanscan-hub/staging/x402-token",
+          X402_HUB_API: "http://localhost:4022/api/hub/v1",
+        },
+        "/api/",
+      ),
+    ).toMatchObject({
+      x402TokenSecretName: "sorobanscan-hub/staging/x402-token",
+      x402HubApi: "http://localhost:4022/api/hub/v1",
+    });
+    // Empty is unset.
+    expect(readSettings({ ...ENV, HUB_X402_TOKEN_SECRET: "", X402_HUB_API: "" }, "/api/")).toEqual(
+      SETTINGS,
+    );
+  });
+
+  it("refuses a malformed secret name or API, naming the setting and not repeating it", () => {
+    const pasted = Buffer.alloc(32, 0xa5).toString("base64");
+    for (const [setting, values] of [
+      ["HUB_X402_TOKEN_SECRET", ["x402 token", "x402/token\n", pasted]],
+      [
+        "X402_HUB_API",
+        [
+          "http://example.com",
+          "https://x402-portal.sorobanscan.com/api/hub/v1/",
+          "https://user:password@x402-portal.sorobanscan.com/api/hub/v1",
+          "https://x402-portal.sorobanscan.com/api/hub/v1?key=1",
+        ],
+      ],
+    ] as const) {
+      for (const value of values) {
+        let message = "";
+        try {
+          readSettings({ ...ENV, [setting]: value }, "/api/");
+        } catch (error) {
+          message = (error as Error).message;
+        }
+        expect(message, `${setting} ${value}`).toMatch(new RegExp(setting));
+        expect(message, `${setting} ${value}`).not.toContain(value.trim());
+        expect(message).not.toContain("password");
+      }
+      // Checked with the required settings missing too.
+      expect(() => readSettings({ [setting]: values[0] }, "/api/")).toThrow(new RegExp(setting));
+    }
+  });
+
+  it("answers 400 unknown_product for x402's routes, and a failed issue, while it isn't served", async () => {
+    const hub = startHub();
+    const browser = hub.browser();
+    await hub.signIn(browser);
+    const account = await browser.request("/api/hub/x402/account");
+    expect(account.status).toBe(400);
+    expect(await account.json()).toEqual({ error: "unknown_product" });
+    const failed = await hub.getKey(browser, "product=x402");
+    expect(failed.status).toBe(303);
+    expect(locationOf(failed)).toBe("/api/dashboard?issue=failed");
+    expect(hub.prices.calls).toEqual([]);
+  });
+
+  it("answers x402's three calls from x402, and Prices' from Prices", async () => {
+    const hub = startBoth();
+    const browser = hub.browser();
+    await hub.signIn(browser);
+
+    const account = await browser.request("/api/hub/x402/account");
+    expect(account.status).toBe(200);
+    expect(await account.json()).toEqual({ key: { state: "active", can_issue: false } });
+    const reveal = await browser.request("/api/hub/x402/key/reveal", { method: "POST" });
+    expect(await reveal.json()).toEqual({
+      name: `discord-${ACCOUNT_ID}-key`,
+      value: X402_KEY,
+    });
+    const revoke = await browser.request("/api/hub/x402/key/revoke", { method: "POST" });
+    expect(await revoke.json()).toEqual({ revoked: true });
+    expect(hub.x402.calls.map((call) => call.url.slice(X402_API.length))).toEqual([
+      "/account",
+      "/key/reveal",
+      "/key/revoke",
+    ]);
+    expect(hub.prices.calls).toEqual([]);
+
+    expect((await browser.request("/api/hub/prices/account")).status).toBe(200);
+    expect(hub.prices.calls).toHaveLength(1);
+    expect(hub.x402.calls).toHaveLength(3);
+    // Each saw only tokens that verify under its own secret and context.
+    expect(hub.x402.calls.map((call) => call.refused)).toEqual([undefined, undefined, undefined]);
+    expect(hub.x402.accepted.every((call) => call.claims.aud === "x402")).toBe(true);
+    expect(hub.prices.calls.map((call) => call.refused)).toEqual([undefined]);
+    expect(hub.prices.accepted.every((call) => call.claims.aud === "prices")).toBe(true);
+    // The key reaches no log.
+    expect(logged()).not.toContain(X402_KEY);
+  });
+
+  /** Presses "Get API Key" for x402 and comes back from Discord, with `answers` queued. */
+  async function issueX402(hub: ReturnType<typeof startBoth>, browser: Browser) {
+    const started = await hub.getKey(browser, "product=x402");
+    expect(started.status).toBe(303);
+    const state = stateOf(started);
+    return callback(browser, { code: hub.discord.codeFor(state), state });
+  }
+
+  it("issues x402's key from 'Get API Key' and lands on x402's tab", async () => {
+    const hub = startBoth();
+    const browser = hub.browser();
+    await hub.signIn(browser);
+    const back = await issueX402(hub, browser);
+    expect(back.status).toBe(303);
+    expect(locationOf(back)).toBe("/api/dashboard/x402?issue=issued");
+    expect(hub.x402.calls.map((call) => call.url.slice(X402_API.length))).toEqual(["/key/issue"]);
+    expect(hub.x402.accepted[0]?.claims).toMatchObject({ aud: "x402", act: "issue" });
+    expect(hub.prices.calls).toEqual([]);
+    expect(logged()).toContain(`x402_key_issue issued discord:${ACCOUNT_ID}`);
+    expect(logged()).not.toMatch(/Prices/);
+  });
+
+  it("refuses x402's key at the gates, landing on x402's tab with the reason", async () => {
+    const hub = startBoth();
+    const browser = hub.browser();
+    await hub.signIn(browser);
+    hub.discord.memberAnswer = "pending";
+    const back = await issueX402(hub, browser);
+    expect(locationOf(back)).toBe("/api/dashboard/x402?issue=pending_rules");
+    expect(hub.x402.calls).toEqual([]);
+    expect(hub.prices.calls).toEqual([]);
+  });
+
+  it("lets x402's unread secret fail x402 alone", async () => {
+    const hub = startBoth({}, { x402Secret: () => Promise.reject(new Error("no secret")) });
+    const browser = hub.browser();
+    await hub.signIn(browser);
+    const down = await browser.request("/api/hub/x402/account");
+    expect(down.status).toBe(503);
+    expect(await down.json()).toEqual({ error: "product_not_configured" });
+    expect((await browser.request("/api/hub/prices/account")).status).toBe(200);
+    expect(hub.x402.calls).toEqual([]);
+  });
+});
