@@ -349,9 +349,28 @@ describe("the Prices tab", () => {
     );
   });
 
-  it("says a new key's usage is still to come, and states no limit it wasn't told", async () => {
+  // The hub's contract: `usage: null` beside a working key is a usage read that failed. A key with
+  // nothing counted yet comes with Prices' usage all the same, its `used` null.
+  it.each([
+    ["a plain visit", "", "API Key"],
+    ["the visit after an issue", "?issue=issued", "Your API Key is ready"],
+  ])("says a working key's usage couldn't be read when the account brings none, on %s", async (_, query, title) => {
     stubHub({ account: () => answer(200, { ...ACTIVE, details: details(null) }) });
-    renderAt("/api/dashboard/prices");
+    renderAt(`/api/dashboard/prices${query}`);
+    await card(title);
+    expect(body(await card("Monthly Usage"))).toBe("Could not load your usage.");
+    const rate = await card("Rate Limit");
+    expect(within(rate).getByTestId("rate-limit-pending").textContent).toBe(
+      "Could not load your plan, so its limits are not shown.",
+    );
+    expect(within(rate).queryByText("Active")).toBeNull();
+    expect(screen.queryByText(/Your key is new/)).toBeNull();
+  });
+
+  it("says a key just issued that isn't listed yet has its usage to come, and states no limit", async () => {
+    stubHub({ account: () => answer(200, NO_KEY) });
+    renderAt("/api/dashboard/prices?issue=issued");
+    await screen.findByTestId("issue-settling");
     expect(body(await card("Monthly Usage"))).toBe(
       "Your key is new — usage figures appear here with a delay after your first requests.",
     );
