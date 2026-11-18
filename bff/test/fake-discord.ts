@@ -22,14 +22,19 @@ export class FakeDiscord implements Discord {
   failExchange = false;
   failUser = false;
 
-  /** Every exchange that was attempted, and every membership lookup with its token and guild. */
+  /**
+   * Every round trip the hub started, as it asked for it; every exchange that was attempted; and
+   * every membership lookup with its token and guild.
+   */
+  readonly authorizations: Parameters<Discord["authorizeUrl"]>[0][] = [];
   readonly exchanges: string[] = [];
   readonly memberLookups: { token: string; guildId: string }[] = [];
 
   private readonly started = new Map<string, { challenge: string; redirectUri: string }>();
   private readonly codes = new Map<string, { challenge: string; redirectUri: string }>();
 
-  authorizeUrl(request: { state: string; challenge: string; redirectUri: string }): string {
+  authorizeUrl(request: Parameters<Discord["authorizeUrl"]>[0]): string {
+    this.authorizations.push({ ...request });
     this.started.set(request.state, {
       challenge: request.challenge,
       redirectUri: request.redirectUri,

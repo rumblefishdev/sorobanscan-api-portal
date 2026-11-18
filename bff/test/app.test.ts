@@ -1,10 +1,18 @@
 import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
-import { createHub, PENDING_TTL_SECONDS, SESSION_TTL_SECONDS } from "../src/app.ts";
-import { httpDiscord } from "../src/discord.ts";
+import { createHub, PENDING_TTL_SECONDS, SESSION_TTL_SECONDS, type HubDeps } from "../src/app.ts";
+import { createdAt, httpDiscord } from "../src/discord.ts";
 import { missingSettings, readSettings, type HubSettings } from "../src/settings.ts";
 import { tokens } from "../src/tokens.ts";
 import { ACCOUNT_ID, BOTH_SCOPES, FakeDiscord } from "./fake-discord.ts";
+import {
+  envelope,
+  FakePrices,
+  KEY_VALUE,
+  PRICES_API,
+  PRICES_SECRET,
+  type Answer,
+} from "./fake-prices.ts";
 
 const PUBLIC_ORIGIN = "http://localhost:5173";
 const GUILD = "897514728459468821";
@@ -53,7 +61,14 @@ class Browser {
 
   async request(
     path: string,
-    init: { method?: string; origin?: string | null; cookie?: string } = {},
+    init: {
+      method?: string;
+      origin?: string | null;
+      cookie?: string;
+      /** A form's body, urlencoded, sent as `contentType` (a form's own unless given). */
+      form?: string;
+      contentType?: string;
+    } = {},
   ): Promise<Response> {
     const headers = new Headers();
     const [pathname = ""] = path.split("?");
@@ -64,10 +79,17 @@ class Browser {
         .map(([name, set]) => `${name}=${set.value}`)
         .join("; ");
     if (cookie) headers.set("cookie", cookie);
-    // A page's `fetch` that posts names its origin; a navigation to a GET doesn't.
+    // A page's `fetch` or form that posts names its origin; a navigation to a GET doesn't.
     const origin = init.origin === undefined && init.method === "POST" ? PUBLIC_ORIGIN : init.origin;
     if (origin) headers.set("origin", origin);
-    const response = await send(this.hub, path, { method: init.method ?? "GET", headers });
+    if (init.form !== undefined) {
+      headers.set("content-type", init.contentType ?? "application/x-www-form-urlencoded");
+    }
+    const response = await send(this.hub, path, {
+      method: init.method ?? "GET",
+      headers,
+      body: init.form,
+    });
     for (const line of response.headers.getSetCookie()) {
       const [pair = "", ...attributes] = line.split("; ");
       const at = pair.indexOf("=");
@@ -85,6 +107,10 @@ class Browser {
   get pending(): string | undefined {
     return this.jar.get("hub_oauth")?.value;
   }
+  /** Puts a session in the jar, as another tab's sign-in would. */
+  set session(value: string) {
+    this.jar.set("hub_session", { value, path: "/api/hub" });
+  }
 }
 
 const locationOf = (response: Response) => response.headers.get("location") ?? "";
@@ -93,14 +119,25 @@ const me = async (browser: Browser) => (await browser.request("/api/hub/me")).js
 const callback = (browser: Browser, query: Record<string, string>, cookie?: string) =>
   browser.request(`/api/hub/auth/callback?${new URLSearchParams(query)}`, cookie ? { cookie } : {});
 
-/** A hub on `settings` with Discord in memory and a clock the test moves. */
-function startHub(settings: Partial<HubSettings> = {}) {
+/** A hub on `settings` with Discord and Prices in memory and a clock the test moves. */
+function startHub(settings: Partial<HubSettings> = {}, deps: HubDeps = {}) {
   let now = NOW;
   const discord = new FakeDiscord();
-  const hub = createHub({ ...SETTINGS, ...settings }, { discord, now: () => now });
+  const prices = new FakePrices(() => now);
+  const hub = createHub(
+    { ...SETTINGS, pricesHubApi: PRICES_API, ...settings },
+    {
+      discord,
+      now: () => now,
+      fetch: prices.fetch,
+      pricesSecret: () => Promise.resolve(PRICES_SECRET),
+      ...deps,
+    },
+  );
   return {
     hub,
     discord,
+    prices,
     /** The hub's own signer, for a value no sign-in would make. */
     signer: tokens(SETTINGS.sessionSecret, () => now),
     advance: (ms: number) => void (now += ms),
@@ -113,6 +150,22 @@ function startHub(settings: Partial<HubSettings> = {}) {
     /** Starts a sign-in in `browser` and comes back from Discord with it. */
     async signIn(browser: Browser) {
       const { state, code } = await this.start(browser);
+      return callback(browser, { code, state });
+    },
+    /** Presses "Get API Key" in `browser`: the form's `POST`, with `form` as its body. */
+    getKey(browser: Browser, form = "product=prices") {
+      return browser.request("/api/hub/auth/issue", { method: "POST", form });
+    },
+    /** Presses "Get API Key" in `browser`: the state Discord carries and the code it sends back. */
+    async startIssue(browser: Browser) {
+      const started = await this.getKey(browser);
+      expect(started.status).toBe(303);
+      const state = stateOf(started);
+      return { state, code: discord.codeFor(state) };
+    },
+    /** Presses "Get API Key" in `browser` and comes back from Discord with it. */
+    async issue(browser: Browser) {
+      const { state, code } = await this.startIssue(browser);
       return callback(browser, { code, state });
     },
   };
@@ -864,12 +917,579 @@ describe("the hub's session", () => {
       ["/api/hub/auth/logout", "GET"],
       ["/api/hub/me", "POST"],
       ["/api/hub/auth/login", "POST"],
+      // A link can't start an issue: only the form's `POST` does.
+      ["/api/hub/auth/issue", "GET"],
+      ["/api/hub/auth/issue?product=prices", "GET"],
     ] as const) {
       const response = await browser.request(path, { method });
       // A `POST` here names the page's origin, so it is the route that is refused.
       expect(response.status, `${method} ${path}`).toBe(400);
       expect(await response.json(), `${method} ${path}`).toEqual({ error: "unknown_route" });
     }
+  });
+});
+
+/** Discord's epoch, 2015-01-01T00:00:00Z: a snowflake's time counts from it. */
+const DISCORD_EPOCH = 1_420_070_400_000;
+/** The id Discord would give an account made at `ms`. */
+const idMadeAt = (ms: number) => (BigInt(ms - DISCORD_EPOCH) << 22n).toString();
+/** Another Discord account: the spec's test vector's. */
+const OTHER_ID = "80351110224678912";
+
+/** Back on the Prices tab with `outcome` in the address, and no session set by that answer. */
+function expectLanded(response: Response, outcome: string) {
+  expect(response.status).toBe(303);
+  expect(locationOf(response)).toBe(`/api/dashboard/prices?issue=${outcome}`);
+  expect(response.headers.getSetCookie().filter((line) => line.startsWith("hub_session="))).toEqual(
+    [],
+  );
+}
+
+describe("a Discord account's age", () => {
+  it("is read from its id", () => {
+    // Discord's own example: an account made on 2016-04-30.
+    expect(createdAt(ACCOUNT_ID)).toBe(Date.parse("2016-04-30T11:18:25.796Z"));
+    expect(createdAt(idMadeAt(NOW))).toBe(NOW);
+    expect(createdAt("0")).toBe(DISCORD_EPOCH);
+    // The largest a snowflake can be: 64 bits, the time in the top 42.
+    expect(createdAt("18446744073709551615")).toBe(DISCORD_EPOCH + 2 ** 42 - 1);
+  });
+});
+
+describe("Get API Key", () => {
+  it("starts a silent round trip to Discord, the action and product signed into both halves", async () => {
+    const hub = startHub();
+    const browser = hub.browser();
+    await hub.signIn(browser);
+    const session = browser.session;
+
+    const started = await hub.getKey(browser);
+    expect(started.status).toBe(303);
+    expect(started.headers.get("cache-control")).toBe("no-store");
+    expect(started.headers.getSetCookie()).toEqual([
+      expect.stringMatching(cookieLine("hub_oauth", "/api/hub/auth", PENDING_TTL_SECONDS)),
+    ]);
+    expect(browser.session).toBe(session);
+
+    // Without a consent screen, to the same callback as a sign-in; a sign-in asks with one.
+    const [signin, issue] = hub.discord.authorizations;
+    expect(signin?.prompt).toBeUndefined();
+    expect(issue).toEqual({
+      state: stateOf(started),
+      challenge: expect.stringMatching(/^[\w-]{43}$/),
+      redirectUri: "http://localhost:5173/api/hub/auth/callback",
+      prompt: "none",
+    });
+
+    const pending = hub.signer.verify<{ nonce: string; verifier: string; exp: number }>(
+      "pending",
+      browser.pending,
+    );
+    expect(pending).toEqual({
+      action: "issue",
+      product: "prices",
+      account: ACCOUNT_ID,
+      nonce: expect.stringMatching(/^[\w-]{43}$/),
+      verifier: expect.stringMatching(/^[\w-]{43}$/),
+      exp: NOW / 1000 + PENDING_TTL_SECONDS,
+    });
+    // The account stays in the browser's half: what Discord carries names none.
+    expect(hub.signer.verify("state", stateOf(started))).toEqual({
+      action: "issue",
+      product: "prices",
+      nonce: pending?.nonce,
+      exp: pending?.exp,
+    });
+    expect(createHash("sha256").update(pending?.verifier ?? "").digest("base64url")).toBe(
+      issue?.challenge,
+    );
+
+    // Nothing is asked of Discord's API or of Prices until Discord sends the browser back.
+    expect(hub.discord.exchanges).toHaveLength(1);
+    expect(hub.prices.calls).toEqual([]);
+  });
+
+  it("asks the real Discord for prompt=none, and otherwise as a sign-in does", async () => {
+    const session = tokens(SETTINGS.sessionSecret, () => NOW).sign(
+      "session",
+      { id: ACCOUNT_ID, username: "member" },
+      SESSION_TTL_SECONDS,
+    );
+    const browser = new Browser(createHub(SETTINGS, { now: () => NOW }));
+    browser.session = session;
+    const started = await browser.request("/api/hub/auth/issue", {
+      method: "POST",
+      form: "product=prices",
+    });
+    expect(started.status).toBe(303);
+    const to = new URL(locationOf(started));
+    expect(`${to.origin}${to.pathname}`).toBe("https://discord.com/oauth2/authorize");
+    expect(Object.fromEntries(to.searchParams)).toEqual({
+      response_type: "code",
+      client_id: "1234567890",
+      scope: "identify guilds.members.read",
+      redirect_uri: "http://localhost:5173/api/hub/auth/callback",
+      state: expect.stringMatching(new RegExp(`^${TOKEN}$`)),
+      code_challenge: expect.stringMatching(/^[\w-]{43}$/),
+      code_challenge_method: "S256",
+      prompt: "none",
+    });
+  });
+
+  it("issues a key once the gates pass on that round trip's answer, and lands on issued", async () => {
+    const hub = startHub();
+    const browser = hub.browser();
+    await hub.signIn(browser);
+    // Signing in asks Prices nothing.
+    expect(hub.prices.calls).toEqual([]);
+    const session = browser.session;
+
+    const { state, code } = await hub.startIssue(browser);
+    const back = await callback(browser, { code, state });
+    expectLanded(back, "issued");
+    // The browser's half is gone; the session is as it was, not made again.
+    expect(back.headers.getSetCookie()).toEqual([
+      "hub_oauth=; Path=/api/hub/auth; Max-Age=0; HttpOnly; SameSite=Lax",
+    ]);
+    expect(browser.pending).toBeUndefined();
+    expect(browser.session).toBe(session);
+
+    // The membership was read again, with the issue's own token.
+    const [signInCode = ""] = hub.discord.exchanges;
+    expect(hub.discord.exchanges).toEqual([signInCode, code]);
+    expect(hub.discord.memberLookups).toEqual([
+      { token: hub.discord.tokenFor(signInCode), guildId: GUILD },
+      { token: hub.discord.tokenFor(code), guildId: GUILD },
+    ]);
+    // One call to Prices: key/issue, with a token for issue, for the session's account.
+    expect(hub.prices.calls.map((call) => [call.method, call.url])).toEqual([
+      ["POST", `${PRICES_API}/key/issue`],
+    ]);
+    const [call] = hub.prices.accepted;
+    expect(call?.claims).toMatchObject({
+      act: "issue",
+      sub: `discord:${ACCOUNT_ID}`,
+      name: "member",
+    });
+
+    expect(logged().split("\n")).toEqual([
+      `signed_in discord:${ACCOUNT_ID}`,
+      `prices_key_issue issued discord:${ACCOUNT_ID} jti:${call?.claims.jti}`,
+    ]);
+    for (const secret of [
+      code,
+      state,
+      hub.discord.tokenFor(code),
+      session ?? "",
+      call?.token ?? "",
+      KEY_VALUE,
+    ]) {
+      expect(logged()).not.toContain(secret);
+    }
+  });
+
+  it("passes each of Prices' outcomes on in the address, and nothing else of its answer", async () => {
+    for (const body of [
+      { outcome: "issued" },
+      { outcome: "has_key" },
+      { outcome: "capped", next_eligible_at: "2026-12-01T00:00:00Z" },
+      { outcome: "too_young" },
+      { outcome: "failed" },
+    ]) {
+      vi.clearAllMocks();
+      const hub = startHub();
+      hub.prices.answer("/key/issue", () => Response.json(body));
+      const browser = hub.browser();
+      await hub.signIn(browser);
+      expectLanded(await hub.issue(browser), body.outcome);
+      expect(hub.prices.accepted).toHaveLength(1);
+      expect(logged()).toContain(`prices_key_issue ${body.outcome} discord:${ACCOUNT_ID}`);
+    }
+  });
+
+  it("lands on failed when Prices gives no outcome, naming why in the log", async () => {
+    const cases: [string, (() => Answer)[], string][] = [
+      ["Prices' own error", [envelope(500, "internal_error")], "internal_error"],
+      ["a refused token", [envelope(401, "invalid_token")], "invalid_token"],
+      ["a gateway's 429", [() => new Response("", { status: 429 })], "prices_busy"],
+      ["an HTML 502", [() => new Response("<html>", { status: 502 })], "prices_unavailable"],
+      ["an unknown outcome", [() => Response.json({ outcome: "maybe" })], "prices_unavailable"],
+      [
+        "a 503 twice",
+        [envelope(503, "hub_unconfigured"), envelope(503, "hub_unconfigured")],
+        "hub_unconfigured",
+      ],
+      ["no answer", [() => new TypeError("fetch failed")], "prices_unavailable"],
+    ];
+    for (const [what, answers, error] of cases) {
+      vi.clearAllMocks();
+      const hub = startHub();
+      hub.prices.answer("/key/issue", ...answers);
+      const browser = hub.browser();
+      await hub.signIn(browser);
+      const back = await hub.issue(browser);
+      expectLanded(back, "failed");
+      expect(logged(), what).toContain(
+        `issue_refused failed discord:${ACCOUNT_ID} (Prices gave no outcome: ${error})`,
+      );
+    }
+
+    // The secret out of reach: Prices is never asked.
+    vi.clearAllMocks();
+    const unread = startHub({}, { pricesSecret: () => Promise.reject(new Error("no secret")) });
+    const browser = unread.browser();
+    await unread.signIn(browser);
+    expectLanded(await unread.issue(browser), "failed");
+    expect(unread.prices.calls).toEqual([]);
+    expect(logged()).toContain(
+      `issue_refused failed discord:${ACCOUNT_ID} (Prices gave no outcome: product_not_configured)`,
+    );
+  });
+
+  it.each([
+    ["not_member", "not_member"],
+    ["pending", "pending_rules"],
+    ["unknown", "unknown"],
+  ] as const)("refuses a %s answer as %s, asking Prices nothing", async (answer, reason) => {
+    const hub = startHub();
+    const browser = hub.browser();
+    await hub.signIn(browser);
+    // Since the sign-in, the account left the server or is back in screening.
+    hub.discord.memberAnswer = answer;
+    expectLanded(await hub.issue(browser), reason);
+    expect(hub.prices.calls).toEqual([]);
+    expect(hub.discord.memberLookups).toHaveLength(2);
+    expect(logged()).toContain(`issue_refused ${reason} discord:${ACCOUNT_ID}`);
+    // Still signed in: a refused key is not a sign-out.
+    expect(await me(browser)).toMatchObject({ authenticated: true });
+  });
+
+  it("treats Discord failing on the member lookup as unknown", async () => {
+    const hub = startHub();
+    const browser = hub.browser();
+    await hub.signIn(browser);
+    hub.discord.memberAnswer = new Error("socket hang up");
+    expectLanded(await hub.issue(browser), "unknown");
+    expect(hub.prices.calls).toEqual([]);
+    expect(logged()).toContain(
+      `issue_refused unknown discord:${ACCOUNT_ID} ` +
+        "(Discord did not say whether the account is a member: an unexpected Error)",
+    );
+  });
+
+  it("refuses an account younger than the setting as too_young, though it may sign in", async () => {
+    const young = idMadeAt(NOW - 5 * 60_000 + 1000);
+    const hub = startHub();
+    hub.discord.account = { id: young, username: "newcomer" };
+    const browser = hub.browser();
+    // Age is a gate on keys only.
+    expect(locationOf(await hub.signIn(browser))).toBe("/api/dashboard");
+    expectLanded(await hub.issue(browser), "too_young");
+    expect(hub.prices.calls).toEqual([]);
+    expect(logged()).toContain(
+      `issue_refused too_young discord:${young} (the account is younger than 5 minutes)`,
+    );
+
+    // Five minutes old is old enough.
+    hub.advance(1000);
+    expectLanded(await hub.issue(browser), "issued");
+    expect(hub.prices.accepted.map((call) => call.claims.sub)).toEqual([`discord:${young}`]);
+
+    // The setting decides, and an id from the future is never old enough.
+    for (const [minutes, age, outcome] of [
+      [0, 0, "issued"],
+      [0, -60_000, "too_young"],
+      [60, 60 * 60_000 - 1, "too_young"],
+      [60, 60 * 60_000, "issued"],
+    ] as const) {
+      const other = startHub({ minAccountAgeMinutes: minutes });
+      other.discord.account = { id: idMadeAt(NOW - age), username: "newcomer" };
+      const its = other.browser();
+      await other.signIn(its);
+      expectLanded(await other.issue(its), outcome);
+    }
+  });
+
+  // Review focus 1: another site can't make a signed-in visitor's browser ask for a key.
+  it("refuses a POST from another site or without an Origin, and a link, starting nothing", async () => {
+    let reads = 0;
+    const hub = startHub(
+      {},
+      {
+        pricesSecret: () => {
+          reads += 1;
+          return Promise.resolve(PRICES_SECRET);
+        },
+      },
+    );
+    const browser = hub.browser();
+    await hub.signIn(browser);
+    for (const origin of [
+      null,
+      "null",
+      "https://evil.example",
+      "http://localhost:5174",
+      "https://localhost:5173",
+      "http://localhost:5173.evil.example",
+    ]) {
+      const response = await browser.request("/api/hub/auth/issue", {
+        method: "POST",
+        origin,
+        form: "product=prices",
+      });
+      expect(response.status, String(origin)).toBe(400);
+      expect(await response.json()).toEqual({ error: "bad_origin" });
+      expect(response.headers.get("location")).toBeNull();
+      expect(response.headers.getSetCookie()).toEqual([]);
+    }
+    // A link is a GET: it starts nothing, with or without the action named.
+    for (const path of [
+      "/api/hub/auth/issue?product=prices",
+      "/api/hub/auth/login?action=issue&product=prices",
+    ]) {
+      const response = await browser.request(path);
+      expect(response.status, path).toBe(400);
+      expect(response.headers.get("location"), path).toBeNull();
+      expect(response.headers.getSetCookie(), path).toEqual([]);
+    }
+    // Only the sign-in went to Discord.
+    expect(hub.discord.authorizations).toHaveLength(1);
+    expect(hub.prices.calls).toEqual([]);
+    expect(reads).toBe(0);
+  });
+
+  it("refuses an issue's callback replayed, or completed in another browser", async () => {
+    const hub = startHub();
+    const browser = hub.browser();
+    await hub.signIn(browser);
+    const [signInCode] = hub.discord.exchanges;
+
+    const { state, code } = await hub.startIssue(browser);
+    expectLanded(await callback(browser, { code, state }), "issued");
+    // Presented again: the first took the browser's half with it.
+    expectLanded(await callback(browser, { code, state }), "failed");
+    expect(hub.discord.exchanges).toEqual([signInCode, code]);
+    expect(hub.prices.calls).toHaveLength(1);
+
+    // Another account's issue, completed in this signed-in browser: its half isn't here.
+    const attacker = hub.browser();
+    attacker.session = hub.signer.sign(
+      "session",
+      { id: OTHER_ID, username: "other" },
+      SESSION_TTL_SECONDS,
+    );
+    const theirs = await hub.startIssue(attacker);
+    expectLanded(await callback(browser, theirs), "failed");
+    // Nor with this browser's own issue under way: its nonce is another.
+    await hub.startIssue(browser);
+    const again = await hub.startIssue(attacker);
+    expectLanded(await callback(browser, again), "failed");
+    expect(hub.discord.exchanges).toEqual([signInCode, code]);
+    expect(hub.prices.calls).toHaveLength(1);
+    expect(logged()).toContain(`issue_refused failed (the state belongs to another sign-in)`);
+  });
+
+  // Review focus 2: a key is only ever issued to the account whose session asked for it.
+  it("refuses Discord answering for another account than the session's as account_mismatch", async () => {
+    const hub = startHub();
+    const browser = hub.browser();
+    await hub.signIn(browser);
+
+    // The visitor switched Discord accounts after signing in: Discord comes back for the other.
+    hub.discord.account = { id: OTHER_ID, username: "other" };
+    expectLanded(await hub.issue(browser), "account_mismatch");
+    expect(hub.prices.calls).toEqual([]);
+    // Nothing more is read of the other account.
+    expect(hub.discord.memberLookups).toHaveLength(1);
+    expect(logged()).toContain(
+      `issue_refused account_mismatch discord:${ACCOUNT_ID} ` +
+        "(Discord answered for another account than the session's)",
+    );
+    expect(await me(browser)).toEqual({ authenticated: true, id: ACCOUNT_ID, username: "member" });
+
+    // Or the session became the other account's between the press and Discord's answer (a sign-in
+    // in another tab), and Discord answers for that one: the key was asked for by the first.
+    hub.discord.account = { id: ACCOUNT_ID, username: "member" };
+    const pressed = await hub.startIssue(browser);
+    const firstSession = browser.session ?? "";
+    browser.session = hub.signer.sign(
+      "session",
+      { id: OTHER_ID, username: "other" },
+      SESSION_TTL_SECONDS,
+    );
+    hub.discord.account = { id: OTHER_ID, username: "other" };
+    const exchanged = hub.discord.exchanges.length;
+    expectLanded(await callback(browser, pressed), "account_mismatch");
+    expect(hub.discord.exchanges).toHaveLength(exchanged);
+    expect(logged()).toContain(
+      `issue_refused account_mismatch discord:${ACCOUNT_ID} ` +
+        "(the session is another account's than the one that asked)",
+    );
+    expect(logged()).not.toContain(OTHER_ID);
+
+    // Or the session ended in between (signed out in another tab): no key, nothing asked.
+    browser.session = firstSession;
+    hub.discord.account = { id: ACCOUNT_ID, username: "member" };
+    const before = await hub.startIssue(browser);
+    await browser.request("/api/hub/auth/logout", { method: "POST" });
+    expectLanded(await callback(browser, before), "failed");
+    expect(hub.discord.exchanges).toHaveLength(exchanged);
+    expect(hub.prices.calls).toEqual([]);
+  });
+
+  it("can't complete a sign-in's round trip as an issue, nor an issue's as a sign-in", async () => {
+    const hub = startHub();
+    const browser = hub.browser();
+    await hub.signIn(browser);
+    const session = browser.session ?? "";
+    const exchanged = hub.discord.exchanges.length;
+    const nonceOf = (b: Browser) =>
+      hub.signer.verify<{ nonce: string }>("pending", b.pending)?.nonce;
+
+    // A sign-in started, and a state for an issue with its nonce, which no round trip makes.
+    const signin = await hub.start(browser);
+    const asIssue = hub.signer.sign(
+      "state",
+      { action: "issue", product: "prices", nonce: nonceOf(browser) },
+      PENDING_TTL_SECONDS,
+    );
+    expectRefused(await callback(browser, { code: signin.code, state: asIssue }), "failed");
+
+    // An issue started, and a state for a sign-in with its nonce.
+    const issue = await hub.startIssue(browser);
+    const asSignin = hub.signer.sign(
+      "state",
+      { action: "signin", nonce: nonceOf(browser) },
+      PENDING_TTL_SECONDS,
+    );
+    expectLanded(await callback(browser, { code: issue.code, state: asSignin }), "failed");
+
+    // Or a state for another product's issue.
+    const other = await hub.startIssue(browser);
+    const forX402 = hub.signer.sign(
+      "state",
+      { action: "issue", product: "x402", nonce: nonceOf(browser) },
+      PENDING_TTL_SECONDS,
+    );
+    expectLanded(await callback(browser, { code: other.code, state: forX402 }), "failed");
+
+    // Or both halves for a product this backend doesn't serve, or an action it doesn't know.
+    for (const started of [
+      { action: "issue", product: "x402" },
+      { action: "issue" },
+      { action: "revoke", product: "prices" },
+    ]) {
+      const halves = { ...started, nonce: "n".repeat(43) };
+      const pending = hub.signer.sign(
+        "pending",
+        { ...halves, verifier: "v".repeat(43), account: ACCOUNT_ID },
+        PENDING_TTL_SECONDS,
+      );
+      const state = hub.signer.sign("state", halves, PENDING_TTL_SECONDS);
+      const back = await callback(
+        hub.browser(),
+        { code: "the-code", state },
+        `hub_oauth=${pending}; hub_session=${session}`,
+      );
+      expectRefused(back, "failed");
+    }
+
+    expect(hub.discord.exchanges).toHaveLength(exchanged);
+    expect(hub.prices.calls).toEqual([]);
+    expect(browser.session).toBe(session);
+    expect(logged()).toContain("signin_refused failed (the state is for another action)");
+    expect(logged()).toContain("issue_refused failed (the state is for another action)");
+    expect(logged()).toContain("issue_refused failed (the state is for another product)");
+  });
+
+  it("reports a denied consent as cancelled, and Discord's other failures as failed", async () => {
+    const hub = startHub();
+    const browser = hub.browser();
+    await hub.signIn(browser);
+    const { state } = await hub.startIssue(browser);
+    expectLanded(await callback(browser, { error: "access_denied", state }), "cancelled");
+    expect(logged()).toContain("issue_refused cancelled");
+
+    const queries: Record<string, string>[] = [
+      { error: "server_error" },
+      { error: "interaction_required" },
+      {},
+    ];
+    for (const query of queries) {
+      const { state: its } = await hub.startIssue(browser);
+      expectLanded(await callback(browser, { ...query, state: its }), "failed");
+    }
+    for (const fail of ["failExchange", "failUser"] as const) {
+      hub.discord[fail] = true;
+      expectLanded(await hub.issue(browser), "failed");
+      hub.discord[fail] = false;
+    }
+    hub.discord.scope = "identify guilds.members.read email";
+    expectLanded(await hub.issue(browser), "failed");
+    expect(hub.prices.calls).toEqual([]);
+    expect(hub.discord.memberLookups).toHaveLength(1);
+  });
+
+  it("answers 401 without a session and 400 unknown_product for any other product, starting nothing", async () => {
+    let reads = 0;
+    const counting = () => {
+      reads += 1;
+      return Promise.resolve(PRICES_SECRET);
+    };
+    const hub = startHub({}, { pricesSecret: counting });
+    const anonymous = hub.browser();
+    for (const form of ["product=prices", "product=x402", ""]) {
+      const response = await hub.getKey(anonymous, form);
+      expect(response.status, form).toBe(401);
+      expect(await response.json()).toEqual({ error: "not_signed_in" });
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      expect(response.headers.getSetCookie()).toEqual([]);
+    }
+
+    const browser = hub.browser();
+    await hub.signIn(browser);
+    for (const form of [
+      "product=x402",
+      "product=Prices",
+      "product=",
+      "",
+      "products=prices",
+      "product=prices&product=prices",
+      "product=prices&product=x402",
+      "product=__proto__",
+      "product=constructor",
+      "product=prices%00",
+      "product=%20prices",
+    ]) {
+      const response = await hub.getKey(browser, form);
+      expect(response.status, form).toBe(400);
+      expect(await response.json(), form).toEqual({ error: "unknown_product" });
+      expect(response.headers.get("location"), form).toBeNull();
+      expect(response.headers.getSetCookie(), form).toEqual([]);
+    }
+    // Named anywhere but in a form's urlencoded body.
+    for (const [path, form, contentType] of [
+      ["/api/hub/auth/issue?product=prices", "", undefined],
+      ["/api/hub/auth/issue", '{"product":"prices"}', "application/json"],
+      ["/api/hub/auth/issue", "product=prices", "text/plain"],
+    ] as const) {
+      const response = await browser.request(path, { method: "POST", form, contentType });
+      expect(response.status, `${path} ${contentType}`).toBe(400);
+      expect(await response.json()).toEqual({ error: "unknown_product" });
+    }
+    // Prices too, when the backend's own list leaves it out.
+    const without = startHub({ products: [] }, { pricesSecret: counting });
+    const its = without.browser();
+    await without.signIn(its);
+    const response = await without.getKey(its);
+    expect(response.status).toBe(400);
+    expect(await response.json()).toEqual({ error: "unknown_product" });
+
+    // Only the sign-ins went to Discord.
+    expect(hub.discord.authorizations).toHaveLength(1);
+    expect(without.discord.authorizations).toHaveLength(1);
+    expect([...hub.prices.calls, ...without.prices.calls]).toEqual([]);
+    expect(reads).toBe(0);
   });
 });
 
