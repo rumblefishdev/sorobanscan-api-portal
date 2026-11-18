@@ -24,6 +24,14 @@ import { color, font, radius } from "../prices/theme/tokens";
 export type AccountNavbarPage = "dashboard" | "quick-start" | "docs" | "privacy-policy";
 
 /**
+ * The bar's height, less its border, at each width: one 52 px row from `sm`; at `xs` two, the
+ * wordmark (24 px) over the links and Sign out (its 44 px target), the row's 16 px `gap` between.
+ * The bar's floor, and the height of its place while a Prices page asks the hub who is signed in
+ * (`EmptyBar` in `src/prices/app/app.tsx`), so the page doesn't move when the bar is drawn.
+ */
+export const ACCOUNT_NAVBAR_HEIGHT = { xs: 24 + 16 + 44, sm: 52 };
+
+/**
  * The dashboard's bar: the Prices portal's signed-in bar (`DashboardNavbar` in
  * `src/prices/landing/DashboardChrome.tsx`), drawn the same, with this tree's links.
  *
@@ -93,7 +101,11 @@ export function AccountNavbar({
           direction="row"
           alignItems="center"
           justifyContent="space-between"
-          sx={{ minHeight: 52, gap: 2, flexWrap: { xs: "wrap", sm: "nowrap" } }}
+          sx={{
+            minHeight: ACCOUNT_NAVBAR_HEIGHT,
+            gap: 2,
+            flexWrap: { xs: "wrap", sm: "nowrap" },
+          }}
         >
           <Wordmark />
 
