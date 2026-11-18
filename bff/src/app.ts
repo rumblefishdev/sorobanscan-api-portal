@@ -177,8 +177,8 @@ const noStore: MiddlewareHandler = async (c, next) => {
  *   with 400 `unknown_action`.
  * - `POST auth/issue`, a form naming `product`, is "Get API Key": with a session, a product the
  *   settings' `products` name, it sends the browser to Discord with `prompt=none`, for an issue
- *   bound to the session's account. Without a session 401 `not_signed_in`; another product 400
- *   `unknown_product`.
+ *   bound to the session's account. Its answer is a page, so without a session it sends the
+ *   browser to `${base}login`, and for another product to `${base}dashboard?issue=failed`.
  * - `GET auth/callback` is where Discord sends it back. A sign-in: a member who has cleared
  *   screening gets a session and goes to `${base}dashboard`; anyone else goes to
  *   `${base}login?signin=<reason>`. An issue: Discord's account must be the session's, a member
@@ -310,11 +310,23 @@ export function createHub(settings: HubSettings | undefined, deps: HubDeps = {})
   // visitor through Discord's silent round trip to a key with one navigation; the `Origin` check
   // above makes this the page's own. The key is for the session's account, which only the
   // browser's half names, and the callback holds Discord's answer and the session to it.
-  app.post("/auth/issue", signedIn, async (c) => {
+  //
+  // The browser shows this route's answer as a page, so its refusals are pages, not the JSON the
+  // page's `fetch` routes answer: a session that ended since the dashboard was drawn (its 24
+  // hours, or Sign out in another tab) is sent to sign in again, and a product this backend
+  // doesn't serve lands on a failed issue. `bad_origin` stays JSON: the page never sends it.
+  app.post("/auth/issue", async (c) => {
+    const session = sessionOf(signer, c);
+    if (!session) return c.redirect(`${base}login`, 303);
     const product = await productNamed(c);
-    if (!product) return c.json({ error: "unknown_product" }, 400);
-    const { discordId } = c.get("caller");
-    return toDiscord(c, { action: ISSUE, product: product.name }, { account: discordId }, "none");
+    if (!product) {
+      console.info(
+        `issue_refused failed discord:${session.id} ` +
+          "(the form named no product this backend serves)",
+      );
+      return c.redirect(`${base}dashboard?issue=failed`, 303);
+    }
+    return toDiscord(c, { action: ISSUE, product: product.name }, { account: session.id }, "none");
   });
 
   app.get("/auth/callback", async (c) => {

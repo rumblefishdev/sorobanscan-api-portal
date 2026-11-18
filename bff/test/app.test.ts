@@ -1556,24 +1556,41 @@ describe("Get API Key", () => {
     ]);
   });
 
-  it("answers 401 without a session and 400 unknown_product for any other product, starting nothing", async () => {
+  // "Get API Key" is a form, so the browser shows its answer as a page: a refusal in JSON would be
+  // shown as its text. A visitor whose session ended (its 24 hours, or Sign out in another tab)
+  // signs in again, and a product the backend doesn't serve is a failed issue. Only `bad_origin`
+  // stays JSON (above): the page never sends it.
+  it("sends a visitor without a session to sign in, and another product to a failed issue, starting nothing", async () => {
     let reads = 0;
     const counting = () => {
       reads += 1;
       return Promise.resolve(PRICES_SECRET);
     };
     const hub = startHub({}, { pricesSecret: counting });
+    /** Sent on to `location`, with no cookie set. */
+    const expectSent = (response: Response, location: string, label: string) => {
+      expect(response.status, label).toBe(303);
+      expect(locationOf(response), label).toBe(location);
+      expect(response.headers.get("cache-control"), label).toBe("no-store");
+      expect(response.headers.getSetCookie(), label).toEqual([]);
+    };
+
     const anonymous = hub.browser();
     for (const form of ["product=prices", "product=x402", ""]) {
-      const response = await hub.getKey(anonymous, form);
-      expect(response.status, form).toBe(401);
-      expect(await response.json()).toEqual({ error: "not_signed_in" });
-      expect(response.headers.get("cache-control")).toBe("no-store");
-      expect(response.headers.getSetCookie()).toEqual([]);
+      expectSent(await hub.getKey(anonymous, form), "/api/login", form);
     }
+    const signedOut = hub.browser();
+    await hub.signIn(signedOut);
+    await signedOut.request("/api/hub/auth/logout", { method: "POST" });
+    expect(signedOut.session).toBeUndefined();
+    expectSent(await hub.getKey(signedOut), "/api/login", "signed out");
+    // Signed in now, and pressed a day later: the session's 24 hours are up.
+    const expiring = hub.browser();
+    await hub.signIn(expiring);
 
     const browser = hub.browser();
     await hub.signIn(browser);
+    const failed = "/api/dashboard?issue=failed";
     for (const form of [
       "product=x402",
       "product=Prices",
@@ -1587,11 +1604,7 @@ describe("Get API Key", () => {
       "product=prices%00",
       "product=%20prices",
     ]) {
-      const response = await hub.getKey(browser, form);
-      expect(response.status, form).toBe(400);
-      expect(await response.json(), form).toEqual({ error: "unknown_product" });
-      expect(response.headers.get("location"), form).toBeNull();
-      expect(response.headers.getSetCookie(), form).toEqual([]);
+      expectSent(await hub.getKey(browser, form), failed, form);
     }
     // Named anywhere but in a form's urlencoded body.
     for (const [path, form, contentType] of [
@@ -1600,22 +1613,36 @@ describe("Get API Key", () => {
       ["/api/hub/auth/issue", "product=prices", "text/plain"],
     ] as const) {
       const response = await browser.request(path, { method: "POST", form, contentType });
-      expect(response.status, `${path} ${contentType}`).toBe(400);
-      expect(await response.json()).toEqual({ error: "unknown_product" });
+      expectSent(response, failed, `${path} ${contentType}`);
     }
     // Prices too, when the backend's own list leaves it out.
     const without = startHub({ products: [] }, { pricesSecret: counting });
     const its = without.browser();
     await without.signIn(its);
-    const response = await without.getKey(its);
-    expect(response.status).toBe(400);
-    expect(await response.json()).toEqual({ error: "unknown_product" });
+    expectSent(await without.getKey(its), failed, "products: []");
 
-    // Only the sign-ins went to Discord.
-    expect(hub.discord.authorizations).toHaveLength(1);
+    hub.advance(SESSION_TTL_SECONDS * 1000);
+    expectSent(await hub.getKey(expiring), "/api/login", "expired");
+
+    // Only the sign-ins went to Discord, and nothing was asked of Prices or of its secret.
+    expect(hub.discord.authorizations).toHaveLength(3);
+    expect(hub.discord.authorizations.map((started) => started.prompt)).toEqual([
+      undefined,
+      undefined,
+      undefined,
+    ]);
     expect(without.discord.authorizations).toHaveLength(1);
     expect([...hub.prices.calls, ...without.prices.calls]).toEqual([]);
     expect(reads).toBe(0);
+    // A product the page asked for and the backend doesn't serve is logged, with who asked: the
+    // page shows only that the issue failed.
+    const refusals = logged()
+      .split("\n")
+      .filter((line) => line.startsWith("issue_refused"));
+    const refusal =
+      `issue_refused failed discord:${ACCOUNT_ID} ` +
+      "(the form named no product this backend serves)";
+    expect(refusals).toEqual(Array.from({ length: 15 }, () => refusal));
   });
 });
 

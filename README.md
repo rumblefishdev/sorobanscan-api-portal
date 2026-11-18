@@ -175,7 +175,10 @@ Gateway's throttle) is 503 `prices_busy`, and any other answer that isn't Prices
 Prices logs too; never a token, a key or a body.
 
 "Get API Key" is a form `POST` to `/api/hub/auth/issue` with `product=prices`, from the page's
-own origin and with a session; no key is issued at sign-in. It sends the browser through Discord
+own origin and with a session; no key is issued at sign-in. Its answer is a page, not JSON: without
+a session (it ended since the dashboard was drawn) it sends the browser to `/api/login`, and for a
+product not in `HUB_PRODUCTS` to `/api/dashboard?issue=failed`, logged as `issue_refused failed`;
+a `POST` from another origin is still 400 `bad_origin`. It sends the browser through Discord
 again, with `prompt=none`, so an account that consented before comes straight back; `issue` and
 the product are signed into both halves of that round trip, and the account into the browser's.
 At the callback Discord's account must be the session's (else `account_mismatch`, and Prices is
