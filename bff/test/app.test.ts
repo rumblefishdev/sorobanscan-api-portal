@@ -398,7 +398,16 @@ describe("the settings", () => {
   });
 
   it("refuse products this backend doesn't serve, and an age that isn't whole minutes", () => {
-    for (const products of ["price", "Prices", "prices,", "prices;x402", "x402,", ",prices", "x402 prices"]) {
+    const refused = [
+      "price",
+      "Prices",
+      "prices,",
+      "prices;x402",
+      "x402,",
+      ",prices",
+      "x402 prices",
+    ];
+    for (const products of refused) {
       expect(() => readSettings({ ...ENV, HUB_PRODUCTS: products }, "/api/"), products).toThrow(
         /HUB_PRODUCTS/,
       );

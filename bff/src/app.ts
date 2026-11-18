@@ -38,6 +38,7 @@ import {
   type IssueOutcome as ProductIssueOutcome,
   type ProductAnswer,
   type ProductClient,
+  type ProductClientOptions,
 } from "./products/client.ts";
 import type { HubSettings } from "./settings.ts";
 import { tokens, type Tokens } from "./tokens.ts";
@@ -172,6 +173,9 @@ const noStore: MiddlewareHandler = async (c, next) => {
   await next();
 };
 
+/** A product's row in the hub's table. */
+type ProductEntry = Pick<ProductClientOptions, "product" | "label" | "api" | "signer">;
+
 /**
  * The hub's backend (BFF): sign-in with Discord and the session, under `${base}hub/`.
  *
@@ -213,34 +217,35 @@ export function createHub(settings: HubSettings | undefined, deps: HubDeps = {})
   const signer = tokens(settings.sessionSecret, now);
   const signedIn = requireSession(signer);
   /** Each product: its words in a log line, its API and the secret its tokens are signed with. */
-  const PRODUCTS = {
-    prices: {
-      label: "Prices",
-      api: settings.pricesHubApi,
-      signer: deps.pricesSecret ?? productSecret(settings.pricesTokenSecretName),
-    },
-    x402: {
-      label: "x402",
-      api: settings.x402HubApi,
-      signer: deps.x402Secret ?? productSecret(settings.x402TokenSecretName),
-    },
-  } as const;
+  const productTable = new Map<string, ProductEntry>(
+    (
+      [
+        {
+          product: "prices",
+          label: "Prices",
+          api: settings.pricesHubApi,
+          signer: deps.pricesSecret ?? productSecret(settings.pricesTokenSecretName),
+        },
+        {
+          product: "x402",
+          label: "x402",
+          api: settings.x402HubApi,
+          signer: deps.x402Secret ?? productSecret(settings.x402TokenSecretName),
+        },
+      ] satisfies ProductEntry[]
+    ).map((entry) => [entry.product, entry] as const),
+  );
   /**
    * The products whose routes answer, by the name in the path, each a client of its own. A `Map`:
    * no inherited names. A secret is read (from AWS) when a call needs it, and one product's is
    * out of reach for that product only.
    */
   const products = new Map<string, ProductClient>(
-    (Object.keys(PRODUCTS) as (keyof typeof PRODUCTS)[])
-      .filter((name) => settings.products.includes(name))
-      .map((name) => [
-        name,
-        productClient({
-          ...PRODUCTS[name],
-          product: name,
-          fetchImpl: deps.fetch,
-          now,
-        }),
+    [...productTable.values()]
+      .filter(({ product }) => settings.products.includes(product))
+      .map((entry) => [
+        entry.product,
+        productClient({ ...entry, fetchImpl: deps.fetch, now }),
       ]),
   );
   const secure = secureCookies(publicOrigin);
@@ -270,7 +275,7 @@ export function createHub(settings: HubSettings | undefined, deps: HubDeps = {})
 
   /** A product's name in a log line's words. */
   const labelOf = (name: string) =>
-    (PRODUCTS as Record<string, { label: string } | undefined>)[name]?.label ?? name;
+    productTable.get(name)?.label ?? name;
 
   /** A product this backend serves, with its client, by the name in its routes. */
   const served = (name: unknown) => {
