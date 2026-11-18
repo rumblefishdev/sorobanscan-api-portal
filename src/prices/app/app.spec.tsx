@@ -159,6 +159,15 @@ const renderApp = () =>
     </MemoryRouter>,
   );
 
+/*
+ * `accountPages="own"`: since the shared sign-in's cutover (step 3) this app's
+ * `/login` and `/dashboard` send the browser to the hub's (see "the hub's
+ * sign-in and dashboard" below). Its own sign-in and dashboard, against Prices'
+ * backend, stay until step 4 removes them, and the tests that mount the app
+ * with `own` keep them tested until then: every test here that reaches
+ * `/login` or `/dashboard`, by its address or through the landing's forwards.
+ */
+
 /**
  * The login card alone — the one place on the page a sign-in control can be.
  *
@@ -208,7 +217,7 @@ describe('routes', () => {
   const renderAt = (entry: string) =>
     render(
       <MemoryRouter initialEntries={[entry]}>
-        <App />
+        <App accountPages="own" />
         <LocationSpy />
       </MemoryRouter>,
     );
@@ -569,6 +578,194 @@ describe('routes', () => {
   });
 });
 
+/**
+ * The shared sign-in's cutover, step 3 (`docs/superpowers/specs/2026-11-17-
+ * shared-sign-in-design.md`): signing in and the dashboard are the hub's, one
+ * for every API. Every control on these pages that starts a sign-in goes to
+ * `/api/login?from=prices`, and this app's own `/login` and `/dashboard` send
+ * the browser on to `/api/login?from=prices` and `/api/dashboard/prices`.
+ *
+ * Never to a bare `/api/login`: a browser holding the explorer's old cached
+ * `301` from `/api/login` to `/api/prices-api/login` would loop; the query
+ * makes it another URL. And a real `href`, not a router link: these are pages
+ * of another tree, and under the basename a router link to the hub comes out
+ * as `/api/prices-api/api/login…`, a page of this app.
+ *
+ * Mounted as `main.tsx` mounts it, under the production basename and with the
+ * default `accountPages`, so these are the addresses a visitor gets.
+ */
+describe("the hub's sign-in and dashboard", () => {
+  const HUB_LOGIN = '/api/login?from=prices';
+  const HUB_DASHBOARD = '/api/dashboard/prices';
+  /** The browser's way out of this tree: jsdom can't leave the document. */
+  const replace = vi.fn();
+  const assign = vi.fn();
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    replace.mockReset();
+    assign.mockReset();
+    lastPath = '';
+    lastSearch = '';
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const renderAt = (path: string) =>
+    render(
+      <MemoryRouter
+        basename={ROUTER_BASENAME}
+        initialEntries={[`${ROUTER_BASENAME}${path}`]}
+      >
+        <App />
+        <LocationSpy />
+      </MemoryRouter>,
+    );
+
+  it('points the navbar, the hero and the closing call to action at the hub', async () => {
+    openAndSignedOut();
+    renderAt('/');
+
+    const bar = within(
+      await screen.findByRole('navigation', { name: 'Primary' }),
+    );
+    expect(
+      (await bar.findByRole('link', { name: /get api key/i })).getAttribute(
+        'href',
+      ),
+    ).toBe(HUB_LOGIN);
+    expect(
+      bar.getByRole('link', { name: /^sign in$/i }).getAttribute('href'),
+    ).toBe(HUB_LOGIN);
+
+    const hero = screen.getByRole('heading', { level: 1 }).closest('header');
+    expect(hero).not.toBeNull();
+    expect(
+      within(hero as HTMLElement)
+        .getByRole('link', { name: /get api key/i })
+        .getAttribute('href'),
+    ).toBe(HUB_LOGIN);
+
+    const closing = screen
+      .getByRole('heading', { name: 'Start building today' })
+      .closest('section');
+    expect(closing).not.toBeNull();
+    expect(
+      within(closing as HTMLElement)
+        .getByRole('link', { name: /get api key/i })
+        .getAttribute('href'),
+    ).toBe(HUB_LOGIN);
+
+    // And no other control on the page offers a key or a sign-in elsewhere.
+    const offers = screen.getAllByRole('link', {
+      name: /get api key|^sign in$/i,
+    });
+    expect(offers).toHaveLength(4);
+    for (const offer of offers) expect(offer.getAttribute('href')).toBe(HUB_LOGIN);
+    expect(lastPath).toBe('/');
+  });
+
+  it("points the phone menu's Sign in and Get API Key at the hub", async () => {
+    openAndSignedOut();
+    renderAt('/');
+
+    // By its label: the menu button shows below `sm` only, jsdom's window is
+    // wider than that, and a role query names no hidden element.
+    fireEvent.click(await screen.findByLabelText('Open menu'));
+    const menu = within(screen.getByRole('navigation', { name: 'Menu' }));
+    expect(
+      (await menu.findByRole('link', { name: /get api key/i })).getAttribute(
+        'href',
+      ),
+    ).toBe(HUB_LOGIN);
+    expect(
+      menu.getByRole('link', { name: /^sign in$/i }).getAttribute('href'),
+    ).toBe(HUB_LOGIN);
+  });
+
+  it("points the quick start bar's Sign in and Get API Key at the hub", async () => {
+    openAndSignedOut();
+    renderAt('/quick-start');
+
+    const bar = within(
+      await screen.findByRole('navigation', { name: 'Primary' }),
+    );
+    expect(
+      (await bar.findByRole('link', { name: /get api key/i })).getAttribute(
+        'href',
+      ),
+    ).toBe(HUB_LOGIN);
+    expect(
+      bar.getByRole('link', { name: /^sign in$/i }).getAttribute('href'),
+    ).toBe(HUB_LOGIN);
+  });
+
+  /** Whatever this portal's own backend says, the two pages are the hub's now. */
+  const states = [
+    ['nobody is signed in', openAndSignedOut],
+    ['the old portal has a session', openAndSignedIn],
+    [
+      'the old portal is shut',
+      () =>
+        stubRoutes({
+          [CONFIG_URL]: () => ({ json: async () => ({ enabled: false }) }),
+          [ME_URL]: () => ({ json: async () => ({ authenticated: false }) }),
+        }),
+    ],
+    [
+      'the old portal has not answered',
+      () => vi.stubGlobal('fetch', vi.fn(() => new Promise(() => undefined))),
+    ],
+  ] as const;
+
+  it.each(
+    states.flatMap(([who, stub]) => [
+      ['/login', HUB_LOGIN, who, stub] as const,
+      ['/dashboard', HUB_DASHBOARD, who, stub] as const,
+    ]),
+  )(
+    'sends the browser from %s to %s in place of this page, when %s',
+    async (path, hub, _who, stub) => {
+      vi.stubGlobal('location', { replace, assign });
+      stub();
+      renderAt(path);
+
+      await waitFor(() => expect(replace).toHaveBeenCalled());
+      expect(replace).toHaveBeenCalledWith(hub);
+      // `replace`, not `assign`: Back from the hub must not land here again
+      // and be sent straight back.
+      expect(assign).not.toHaveBeenCalled();
+      // Nothing of the old sign-in is drawn on the way.
+      expect(screen.queryByTestId('login-card')).toBeNull();
+      expect(
+        screen.queryByRole('link', { name: /sign in with discord/i }),
+      ).toBeNull();
+      expect(screen.queryByRole('heading', { name: /^api key$/i })).toBeNull();
+    },
+  );
+
+  // The old backend's callback still lands on `/`, and `RootRoute` forwards
+  // from there to `/login` and `/dashboard`: both end at the hub now.
+  it('sends a sign-in outcome from the landing to the hub sign-in', async () => {
+    vi.stubGlobal('location', { replace, assign });
+    openAndSignedOut();
+    renderAt('/?signin=cancelled');
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith(HUB_LOGIN));
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it("sends the old portal's session from the landing to the Prices tab", async () => {
+    vi.stubGlobal('location', { replace, assign });
+    openAndSignedIn();
+    renderAt('/');
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith(HUB_DASHBOARD));
+    expect(assign).not.toHaveBeenCalled();
+  });
+});
+
 describe('portal home', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -757,7 +954,7 @@ describe('sign in with Discord', () => {
   const renderAt = (entry: string) =>
     render(
       <MemoryRouter initialEntries={[entry]}>
-        <App />
+        <App accountPages="own" />
       </MemoryRouter>,
     );
 
@@ -947,7 +1144,7 @@ describe('sign in with Discord', () => {
     openAndSignedOut();
     render(
       <MemoryRouter initialEntries={['/?signin=cancelled']}>
-        <App />
+        <App accountPages="own" />
         <LocationSpy />
       </MemoryRouter>,
     );
@@ -1302,7 +1499,7 @@ describe('sign in with Discord', () => {
 
     render(
       <MemoryRouter initialEntries={['/']}>
-        <App />
+        <App accountPages="own" />
         <LocationSpy />
       </MemoryRouter>,
     );
@@ -1373,7 +1570,7 @@ describe('sign in with Discord', () => {
     // With the spy: this test's property is the path the visitor is left on.
     render(
       <MemoryRouter initialEntries={['/dashboard']}>
-        <App />
+        <App accountPages="own" />
         <LocationSpy />
       </MemoryRouter>,
     );
@@ -1423,7 +1620,7 @@ describe('the sign-in popup', () => {
   const renderAt = (entry: string) =>
     render(
       <MemoryRouter initialEntries={[entry]}>
-        <App />
+        <App accountPages="own" />
       </MemoryRouter>,
     );
 
@@ -1578,7 +1775,7 @@ describe('the sign-in popup', () => {
     stubPopup({ closed: false, focus: () => undefined });
     render(
       <MemoryRouter initialEntries={['/login']}>
-        <App />
+        <App accountPages="own" />
         <LocationSpy />
       </MemoryRouter>,
     );
@@ -1672,7 +1869,7 @@ describe('the sign-in popup', () => {
     stubPopup({ closed: false, focus: () => undefined });
     render(
       <MemoryRouter initialEntries={['/login']}>
-        <App />
+        <App accountPages="own" />
         <LocationSpy />
       </MemoryRouter>,
     );
@@ -1805,7 +2002,7 @@ describe('the login route when there is nothing to sign in to', () => {
     });
     render(
       <MemoryRouter initialEntries={['/login']}>
-        <App />
+        <App accountPages="own" />
       </MemoryRouter>,
     );
 
@@ -1824,7 +2021,7 @@ describe('the login route when there is nothing to sign in to', () => {
     });
     render(
       <MemoryRouter initialEntries={['/login']}>
-        <App />
+        <App accountPages="own" />
       </MemoryRouter>,
     );
 
@@ -1861,7 +2058,7 @@ describe('a landing state with no session behind it', () => {
       <MemoryRouter
         initialEntries={['/?issue=capped&next_eligible_at=2026-09-01']}
       >
-        <App />
+        <App accountPages="own" />
         <LocationSpy />
       </MemoryRouter>,
     );
@@ -1910,10 +2107,11 @@ describe('navigation off the landing page', () => {
     expect(
       screen.getByRole('link', { name: /^quick start$/i }).getAttribute('href'),
     ).toBe('/quick-start');
-    // And the way in for a visitor who already holds a key.
+    // And the way in for a visitor who already holds a key: the hub's sign-in
+    // (shared sign-in, cutover step 3), a page of another tree.
     expect(
       screen.getByRole('link', { name: /^sign in$/i }).getAttribute('href'),
-    ).toBe('/login');
+    ).toBe('/api/login?from=prices');
     // The wordmark leads to the explorer's home and the footer's mark to
     // Rumble Fish (task 0301) — both were images that led nowhere.
     expect(
@@ -1960,7 +2158,7 @@ describe('navigation off the landing page', () => {
       (who === 'in' ? openAndSignedIn : openAndSignedOut)();
       render(
         <MemoryRouter initialEntries={[path]}>
-          <App />
+          <App accountPages="own" />
         </MemoryRouter>,
       );
 
@@ -2160,7 +2358,7 @@ describe('the API key', () => {
   const renderApp = (entry = '/') =>
     render(
       <MemoryRouter initialEntries={[entry]}>
-        <App />
+        <App accountPages="own" />
         <LocationSpy />
       </MemoryRouter>,
     );
@@ -3110,7 +3308,7 @@ describe('usage against quota', () => {
   const renderApp = () =>
     render(
       <MemoryRouter initialEntries={['/']}>
-        <App />
+        <App accountPages="own" />
       </MemoryRouter>,
     );
 
@@ -3714,7 +3912,7 @@ describe('usage against quota', () => {
     const renderLanded = () =>
       render(
         <MemoryRouter initialEntries={['/?issue=ok']}>
-          <App />
+          <App accountPages="own" />
         </MemoryRouter>,
       );
 
@@ -4189,7 +4387,7 @@ describe('replace my key', () => {
   const renderApp = (entry = '/') =>
     render(
       <MemoryRouter initialEntries={[entry]}>
-        <App />
+        <App accountPages="own" />
         <LocationSpy />
       </MemoryRouter>,
     );

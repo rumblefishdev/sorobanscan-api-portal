@@ -78,6 +78,8 @@ import SwitchAccountRoundedIcon from '@mui/icons-material/SwitchAccountRounded';
 import SyncProblemRoundedIcon from '@mui/icons-material/SyncProblemRounded';
 
 import {
+  HUB_DASHBOARD,
+  HUB_LOGIN,
   LOGIN_ANCHOR,
   QUICKSTART,
   RUMBLEFISH_CONTACT,
@@ -3684,7 +3686,33 @@ function useScrollOnNavigate() {
   }, [pathname, hash, navigation]);
 }
 
-export function App() {
+/**
+ * Where this app's `/login` and `/dashboard` were: since the shared sign-in's
+ * cutover (its step 3), the hub's sign-in and the Prices tab of its dashboard
+ * (`HUB_LOGIN`, `HUB_DASHBOARD`). Pages of another tree, so the browser goes
+ * there, whatever this portal's own backend says. `replace`, so Back from the
+ * hub doesn't land here again and get sent straight back. Its query, an old
+ * round trip's `?signin=` or `?issue=`, isn't carried: those name the old
+ * sign-in's outcomes, not the hub's.
+ */
+function ToHub({ href }: { href: string }) {
+  useEffect(() => {
+    window.location.replace(href);
+  }, [href]);
+  return null;
+}
+
+/**
+ * Whose `/login` and `/dashboard` these routes are.
+ *
+ * - `hub`, the default and what `main.tsx` renders: the hub's (`ToHub`).
+ * - `own`: this portal's own sign-in and dashboard against Prices' backend, as
+ *   before the cutover. Nothing in the bundle asks for them; they stay, with
+ *   their tests, until the cutover's step 4 removes Prices' old sign-in.
+ */
+export type AccountPages = 'hub' | 'own';
+
+export function App({ accountPages = 'hub' }: { accountPages?: AccountPages }) {
   useScrollOnNavigate();
   const probe = useConfigProbe();
   const open = probe.state === 'ok' && probe.config.enabled;
@@ -3709,8 +3737,26 @@ export function App() {
       <meta name="robots" content="noindex" />
       <Routes>
         <Route path="/" element={<RootRoute gate={gate} />} />
-        <Route path="/login" element={<LoginRoute gate={gate} />} />
-        <Route path="/dashboard" element={<DashboardRoute gate={gate} />} />
+        <Route
+          path="/login"
+          element={
+            accountPages === 'hub' ? (
+              <ToHub href={HUB_LOGIN} />
+            ) : (
+              <LoginRoute gate={gate} />
+            )
+          }
+        />
+        <Route
+          path="/dashboard"
+          element={
+            accountPages === 'hub' ? (
+              <ToHub href={HUB_DASHBOARD} />
+            ) : (
+              <DashboardRoute gate={gate} />
+            )
+          }
+        />
         <Route path="/quick-start" element={<QuickStartRoute gate={gate} />} />
         <Route path="/docs" element={<DocsRoute gate={gate} />} />
         <Route

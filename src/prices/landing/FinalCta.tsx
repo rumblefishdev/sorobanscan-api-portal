@@ -1,10 +1,9 @@
 import Button from '@mui/material/Button';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
-import { Link as RouterLink } from 'react-router';
 
 import { color } from '../theme/tokens';
-import { LOGIN_ROUTE, API_REFERENCE } from './links';
+import { HUB_LOGIN, API_REFERENCE } from './links';
 import { ArrowBadge, GradientSection } from './primitives';
 
 /**
@@ -43,8 +42,8 @@ export function FinalCta({ canOfferKey }: { canOfferKey: boolean }) {
             <Button
               variant="contained"
               color="primary"
-              component={RouterLink}
-              to={LOGIN_ROUTE}
+              // The hub's sign-in: a page of another tree (`links.ts`).
+              href={HUB_LOGIN}
               endIcon={<ArrowBadge variant="onPrimary" />}
             >
               Get API Key

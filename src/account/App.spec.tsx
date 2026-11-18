@@ -272,6 +272,60 @@ describe("/login", () => {
     expect(fetchMock.mock.calls.filter(([url]) => url === "/api/hub/me")).toHaveLength(1);
   });
 
+  // The Prices pages send their sign-in here as `?from=prices` (the shared sign-in spec, cutover
+  // step 3): a visitor who is signed in already goes to the tab they came from.
+  it("sends whoever is signed in to the Prices tab, on ?from=prices", async () => {
+    stubBackend(() => answer(200, SIGNED_IN));
+    renderAt("/api/login?from=prices");
+    expect(await screen.findByRole("tabpanel", { name: "Prices API" })).toBeTruthy();
+    expect(where).toBe("/dashboard/prices");
+  });
+
+  it("sends whoever is signed in to the x402 tab on ?from=x402, once the build opens it", async () => {
+    vi.stubEnv("VITE_PRODUCTS", "prices,x402");
+    stubBackend(() => answer(200, SIGNED_IN));
+    renderAt("/api/login?from=x402");
+    expect(await screen.findByRole("tabpanel", { name: "x402" })).toBeTruthy();
+    expect(where).toBe("/dashboard/x402");
+  });
+
+  // Only a product's name is read from `?from=`, never a path or an address, so no value of it
+  // sends anyone anywhere but a tab of the dashboard.
+  it.each([
+    "bogus",
+    "",
+    "PRICES",
+    "https://evil.example/",
+    "//evil.example",
+    "/dashboard/x402",
+    "../prices",
+    "prices/../../hub/auth/logout",
+  ])("sends whoever is signed in to the dashboard, on ?from=%j", async (from) => {
+    stubBackend(() => answer(200, SIGNED_IN));
+    renderAt(`/api/login?from=${encodeURIComponent(from)}`);
+    expect(await screen.findByRole("heading", { level: 1, name: "Dashboard" })).toBeTruthy();
+    expect(where).toBe("/dashboard");
+  });
+
+  it("offers the sign-in on ?from=prices, and leaves it on the address", async () => {
+    stubBackend(() => answer(200, SIGNED_OUT));
+    renderAt("/api/login?from=prices");
+    const button = await screen.findByRole("link", { name: "Sign in with Discord" });
+    expect(button.getAttribute("href")).toBe(SIGN_IN_URL);
+    await settle();
+    expect(where).toBe("/login?from=prices");
+  });
+
+  it("points a signed-in visitor back from a refused round trip at the Prices tab, on ?from=prices", async () => {
+    stubBackend(() => answer(200, SIGNED_IN));
+    renderAt("/api/login?signin=failed&from=prices");
+    const back = await screen.findByRole("link", { name: "Go to your dashboard" });
+    expect(back.getAttribute("href")).toBe("/api/dashboard/prices");
+    fireEvent.click(back);
+    expect(await screen.findByRole("tabpanel", { name: "Prices API" })).toBeTruthy();
+    expect(where).toBe("/dashboard/prices");
+  });
+
   // An issue's round trip left open for more than 10 minutes comes back as a sign-in's failure:
   // the hub can no longer tell it was an issue. The visitor is still signed in.
   it.each(["failed", "cancelled", "not_member", "unknown"])(

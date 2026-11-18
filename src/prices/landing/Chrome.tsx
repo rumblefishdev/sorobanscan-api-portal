@@ -17,8 +17,8 @@ import {
   DASHBOARD_ROUTE,
   DOCS_ROUTE,
   EXPLORER,
+  HUB_LOGIN,
   LANDING,
-  LOGIN_ROUTE,
   PRIVACY_POLICY_ROUTE,
   QUICKSTART_ROUTE,
   RUMBLEFISH_CONTACT,
@@ -198,10 +198,10 @@ export function Navbar({
             {/* A key holder in a fresh browser has a key and no session, and
                 "Get API Key" reads as "make one". The word for what they want
                 is here (task 0301); the button keeps the frame's promise to a
-                first-time visitor. Same route: `/login` signs in and forwards
-                to the dashboard. */}
+                first-time visitor. Same place: the hub's sign-in, which
+                forwards to the dashboard. */}
             {canOfferKey && (
-              <Link component={RouterLink} to={LOGIN_ROUTE} sx={navLinkSx}>
+              <Link href={HUB_LOGIN} sx={navLinkSx}>
                 Sign in
               </Link>
             )}
@@ -211,12 +211,9 @@ export function Navbar({
               <Button
                 variant="contained"
                 color="primary"
-                // A router `Link` to `/login`, not a fragment: the login screen
-                // is its own route now, and an in-app navigation keeps the
-                // `/config` answer and the session lookup this app has already
-                // paid for.
-                component={RouterLink}
-                to={LOGIN_ROUTE}
+                // The hub's sign-in, one for every API: a page of another
+                // tree, so a plain `href` and not a router `Link` (`links.ts`).
+                href={HUB_LOGIN}
                 endIcon={<ArrowBadge variant="onPrimary" />}
                 sx={{
                   // The design's header button is 36 high with 12px of side
@@ -355,13 +352,9 @@ function MobileMenu({
                 </Link>
               ),
             )}
+            {/* The hub's sign-in, as the bar's: plain `href`s (`links.ts`). */}
             {canOfferKey && (
-              <Link
-                component={RouterLink}
-                to={LOGIN_ROUTE}
-                onClick={close}
-                sx={menuLinkSx}
-              >
+              <Link href={HUB_LOGIN} onClick={close} sx={menuLinkSx}>
                 Sign in
               </Link>
             )}
@@ -369,8 +362,7 @@ function MobileMenu({
               <Button
                 variant="contained"
                 color="primary"
-                component={RouterLink}
-                to={LOGIN_ROUTE}
+                href={HUB_LOGIN}
                 onClick={close}
                 endIcon={<ArrowBadge variant="onPrimary" />}
                 sx={{ mt: 1.5 }}

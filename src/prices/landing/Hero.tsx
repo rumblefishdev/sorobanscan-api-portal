@@ -4,11 +4,10 @@ import Container from '@mui/material/Container';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { alpha } from '@mui/material/styles';
-import { Link as RouterLink } from 'react-router';
 
 import { color, font, radius } from '../theme/tokens';
 import { RumbleFishMark } from './Chrome';
-import { LOGIN_ROUTE, API_REFERENCE } from './links';
+import { HUB_LOGIN, API_REFERENCE } from './links';
 import { ArrowBadge, cardBorder } from './primitives';
 import { Terminal } from './Terminal';
 
@@ -149,8 +148,8 @@ export function Hero({ canOfferKey }: { canOfferKey: boolean }) {
                 <Button
                   variant="contained"
                   color="primary"
-                  component={RouterLink}
-                  to={LOGIN_ROUTE}
+                  // The hub's sign-in: a page of another tree (`links.ts`).
+                  href={HUB_LOGIN}
                   endIcon={<ArrowBadge variant="onPrimary" />}
                 >
                   Get API Key
