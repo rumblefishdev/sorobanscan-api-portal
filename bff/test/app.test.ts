@@ -10,7 +10,8 @@ import {
 import { createdAt, httpDiscord } from "../src/discord.ts";
 import { missingSettings, readSettings, type HubSettings } from "../src/settings.ts";
 import { tokens } from "../src/tokens.ts";
-import { FakeProduct, type ProductRoute } from "./fake-product.ts";
+import { FakeProduct } from "./fake-product.ts";
+import { X402_KEY, x402Usual } from "./fake-x402.ts";
 import { ACCOUNT_ID, BOTH_SCOPES, FakeDiscord } from "./fake-discord.ts";
 import {
   envelope,
@@ -1687,20 +1688,6 @@ describe("x402, by opt-in", () => {
   };
   const X402_API = "https://x402-portal.test/api/hub/v1";
   const X402_SECRET = Buffer.alloc(32, 0x58);
-  const X402_KEY = "x402_the-revealed-key-value-0123456789";
-
-  function x402Usual(route: ProductRoute, discordId: string): Record<string, unknown> {
-    switch (route) {
-      case "/account":
-        return { key: { state: "active", can_issue: false } };
-      case "/key/reveal":
-        return { name: `discord-${discordId}-key`, value: X402_KEY };
-      case "/key/revoke":
-        return { revoked: true };
-      case "/key/issue":
-        return { outcome: "issued" };
-    }
-  }
 
   /** A hub with both products' fakes behind one `fetch`, each told apart by its API. */
   function startBoth(settings: Partial<HubSettings> = {}, deps: HubDeps = {}) {
@@ -1808,14 +1795,14 @@ describe("x402, by opt-in", () => {
 
     const account = await browser.request("/api/hub/x402/account");
     expect(account.status).toBe(200);
-    expect(await account.json()).toEqual({ key: { state: "active", can_issue: false } });
+    const accountBody = (await account.json()) as { details?: unknown };
+    expect(accountBody).toEqual(x402Usual("/account", ACCOUNT_ID));
+    // The product's `details.showable` reaches the page untouched.
+    expect(accountBody.details).toEqual({ showable: true });
     const reveal = await browser.request("/api/hub/x402/key/reveal", { method: "POST" });
-    expect(await reveal.json()).toEqual({
-      name: `discord-${ACCOUNT_ID}-key`,
-      value: X402_KEY,
-    });
+    expect(await reveal.json()).toEqual(x402Usual("/key/reveal", ACCOUNT_ID));
     const revoke = await browser.request("/api/hub/x402/key/revoke", { method: "POST" });
-    expect(await revoke.json()).toEqual({ revoked: true });
+    expect(await revoke.json()).toEqual(x402Usual("/key/revoke", ACCOUNT_ID));
     expect(hub.x402.calls.map((call) => call.url.slice(X402_API.length))).toEqual([
       "/account",
       "/key/reveal",
