@@ -329,11 +329,25 @@ copy) is added before x402's tab opens.
 11. **A local hub works on production's Prices.** `pnpm dev` shows the Prices tab with the real
     key and usage from Prices' production backend, as the moved Prices pages already do through
     the dev proxy. No Prices backend runs locally.
-12. **The token key is in AWS KMS from stage 2.** An asymmetric ECC_NIST_P256 key signs the BFF's
-    ES256 tokens; production Prices trusts only its public key. The local BFF signs through the
-    developer's AWS credentials (`AWS_PROFILE`), so only people who can use that key in AWS can
-    mint a token, the same people who already administer Prices' keys. No development key is
-    ever trusted by production.
+12. **A shared secret signs the tokens, not KMS** (akot, 2026-11-18, replacing a KMS/ES256 draft:
+    less code on both sides, about $0.40 a month). One random secret in AWS Secrets Manager,
+    `sorobanscan-hub/production/prices-token`, JSON `{"current": <base64 32 bytes>, "previous"?:
+    <base64>}`. The BFF signs each token with `current` (HMAC-SHA256); Prices accepts `current` or
+    `previous`, so the secret can be changed without a gap. Both read it through their AWS role;
+    the local BFF through the developer's AWS credentials (`AWS_PROFILE`), as Prices' local
+    backend reads its OAuth secret. Only people who can read that secret in AWS can mint a token,
+    the same people who already administer Prices' keys. It is never in a file or in git.
+15. **The token format** (this replaces "A JWT signed ES256 by an AWS KMS key" in "The token the
+    BFF gives products"; claims and their meaning stay): `v1.<payload>.<mac>`, where `payload` is
+    base64url (no padding) of the claims' JSON and `mac` is base64url of
+    HMAC-SHA256(secret, `sorobanscan-hub/prices-token/v1` ‖ 0x00 ‖ ASCII(payload)). `act` is one
+    of `read`, `reveal`, `revoke`, `issue`, one per call. Test vector, which both sides pin:
+    secret base64 `AQIDBAUGBwgJCgsMDQ4PEBESExQVFhcYGRobHB0eHyA=`, claims
+    `{"iss":"https://sorobanscan.com/api/hub","aud":"prices","sub":"discord:80351110224678912","name":"nelly","iat":1795000000,"exp":1795000060,"jti":"AAECAwQFBgcICQoLDA0ODw","act":"reveal"}`
+    (exactly these bytes), token
+    `v1.eyJpc3MiOiJodHRwczovL3Nvcm9iYW5zY2FuLmNvbS9hcGkvaHViIiwiYXVkIjoicHJpY2VzIiwic3ViIjoiZGlzY29yZDo4MDM1MTExMDIyNDY3ODkxMiIsIm5hbWUiOiJuZWxseSIsImlhdCI6MTc5NTAwMDAwMCwiZXhwIjoxNzk1MDAwMDYwLCJqdGkiOiJBQUVDQXdRRkJnY0lDUW9MREEwT0R3IiwiYWN0IjoicmV2ZWFsIn0.aeS9_nACshTGuf2Afv4wbQhvLR-f64XCX0OVmmngofE`.
+16. **Prices' Cloudflare rules** (task 0340: WAF bot rules, `X-Edge-Secret`) must let the BFF's
+    server-to-server calls through; to agree with that task's owner before those rules land.
 13. **Prices' contract goes to production in stage 2**, beside its existing portal routes, through
     Prices' own task, branch, pull request and deploy. Nothing but the BFF calls it, so today's
     portal users see no change.
