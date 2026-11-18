@@ -426,6 +426,20 @@ describe("/dashboard", () => {
     expect(panel.textContent).not.toMatch(/connect here in the next step/);
   });
 
+  // Where the hub's backend sends "Get API Key" for a product it doesn't serve: no tab is named,
+  // so the first open one says the issue failed.
+  it("says on the first open tab that an issue failed, on /dashboard?issue=failed", async () => {
+    vi.stubEnv("VITE_PRODUCTS", "prices");
+    stubBackend(() => answer(200, SIGNED_IN));
+    renderAt("/api/dashboard?issue=failed");
+    const panel = await screen.findByRole("tabpanel", { name: "Prices API" });
+    expect(within(panel).getByTestId("issue-failed").textContent).toMatch(
+      /^We could not create your key\./,
+    );
+    await settle();
+    expect(where).toBe("/dashboard");
+  });
+
   it.each([
     ["/api/dashboard/x402", "a tab that is off"],
     ["/api/dashboard/bogus", "a tab it doesn't know"],
