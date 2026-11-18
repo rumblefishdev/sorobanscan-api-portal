@@ -14,18 +14,19 @@ import { LoginSection } from "../prices/landing/LoginSection";
 import { cardBorder } from "../prices/landing/primitives";
 import { color, font, radius } from "../prices/theme/tokens";
 import { AccountNavbar } from "./AccountNavbar";
-import { CheckingCard } from "./LoginPage";
+import { CheckingCard, SessionFailedCard } from "./LoginPage";
+import { PricesTab } from "./prices/PricesTab";
 import { enabledProducts, PRODUCT_NAME, PRODUCTS, type Product } from "./products";
 import { signOut, type Session } from "./session";
 
 /**
  * `/dashboard` and `/dashboard/<product>`: the Prices portal's dashboard (its `DashboardRoute`)
- * with a tab per API. Each tab will show its product's key, usage and limits from the hub's
- * backend; until that is wired, the open tab says so and shows no figures.
+ * with a tab per API. The Prices tab is the Prices portal's dashboard, fed by the hub's backend
+ * (`prices/PricesTab.tsx`); a tab still to be wired says so and shows no figures.
  *
  * A tab is open when the build turns its product on (`VITE_PRODUCTS`, `products.ts`); the others
  * are shown, marked "Coming soon", and can't be selected. The address names the open tab, and an
- * address that names a shut or unknown one shows the first open tab.
+ * address that names a shut or unknown one is replaced by the first open tab's.
  */
 export function DashboardPage({ session }: { session: Session }) {
   const { product: named } = useParams();
@@ -62,8 +63,25 @@ export function DashboardPage({ session }: { session: Session }) {
       </>
     );
   }
+  // Not knowing who is signed in is not being signed out: a visitor who may well be signed in
+  // stays here, told so, with a retry (review focus 4).
+  if (session.state === "failed") {
+    return (
+      <>
+        {head}
+        <LoginSection full>
+          <SessionFailedCard session={session} />
+        </LoginSection>
+      </>
+    );
+  }
   // Signed out, or nobody can sign in here: `/login` says which.
   if (session.state !== "signed_in") return <Navigate to="/login" replace />;
+  // An address naming a tab that is shut or unknown takes the first open tab's place. Its query
+  // isn't carried: an outcome in it was another tab's.
+  if (named !== undefined && selected !== undefined && named !== selected) {
+    return <Navigate to={`/dashboard/${selected}`} replace />;
+  }
 
   return (
     <>
@@ -175,12 +193,16 @@ export function DashboardPage({ session }: { session: Session }) {
                 id={panelId(selected)}
                 aria-labelledby={tabId(selected)}
               >
-                <DashboardCard title={PRODUCT_NAME[selected]}>
-                  <Typography variant="body1" sx={{ color: color.text.secondary }}>
-                    Your {PRODUCT_NAME[selected]} key, usage and limits connect here in the next
-                    step.
-                  </Typography>
-                </DashboardCard>
+                {selected === "prices" ? (
+                  <PricesTab account={{ id: session.id, username: session.username }} />
+                ) : (
+                  <DashboardCard title={PRODUCT_NAME[selected]}>
+                    <Typography variant="body1" sx={{ color: color.text.secondary }}>
+                      Your {PRODUCT_NAME[selected]} key, usage and limits connect here in the next
+                      step.
+                    </Typography>
+                  </DashboardCard>
+                )}
               </Box>
             )}
           </Stack>
