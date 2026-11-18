@@ -32,7 +32,7 @@ import { PROPAGATION_COPY } from './dates';
  * — that this is destructive and must not be reachable by one stray click —
  * is untouched; only the string changed.
  */
-const REWORK_CONFIRM_PHRASE = 'regenerate-key';
+export const REWORK_CONFIRM_PHRASE = 'regenerate-key';
 
 /**
  * The "Regenerate" confirmation (task 0191's dialog, task 0193's frame).

@@ -76,15 +76,23 @@ export class HubError extends Error {
 /** A code the page names a failure by: snake_case, as the hub and Prices write theirs. */
 const CODE = /^[a-z][a-z0-9_]{0,63}$/;
 
-const isObject = (value: unknown): value is Record<string, unknown> =>
+export const isObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 /**
  * One call to the hub, the session's cookie with it: its JSON object, or a {@link HubError}. A
  * `POST` from this page names its origin, which the hub requires of every `POST`.
  */
-async function call(url: string, method: "GET" | "POST"): Promise<Record<string, unknown>> {
+export async function call(
+  url: string,
+  method: "GET" | "POST",
+  /** The caller's own way to stop waiting (the x402 tab's), besides the deadline below. */
+  signal?: AbortSignal,
+): Promise<Record<string, unknown>> {
   const asking = new AbortController();
+  const stop = () => asking.abort();
+  if (signal?.aborted) stop();
+  else signal?.addEventListener("abort", stop, { once: true });
   // A timer, not `AbortSignal.timeout`: it stops with the call it belongs to.
   const deadline = setTimeout(() => asking.abort(), HUB_TIMEOUT_MS);
   try {
@@ -109,10 +117,11 @@ async function call(url: string, method: "GET" | "POST"): Promise<Record<string,
     throw new HubError(code && CODE.test(code) ? code : "unreadable", response.status);
   } finally {
     clearTimeout(deadline);
+    signal?.removeEventListener("abort", stop);
   }
 }
 
-const isInstant = (value: unknown): value is string | null | undefined =>
+export const isInstant = (value: unknown): value is string | null | undefined =>
   value === undefined || value === null || typeof value === "string";
 
 /** Prices' key, or `undefined` when the answer isn't one of its three states. */

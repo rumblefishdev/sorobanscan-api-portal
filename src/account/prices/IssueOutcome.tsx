@@ -75,6 +75,8 @@ export function IssueBanner({
   outcome,
   username,
   nextEligibleAt,
+  period = "quota period",
+  describeDate = describeNextEligible,
 }: {
   outcome: IssueOutcome | null;
   /** The signed-in account, for `account_mismatch`. */
@@ -84,6 +86,10 @@ export function IssueBanner({
    * hasn't been read, when `capped` waits rather than state a date it will take back.
    */
   nextEligibleAt: string | null | undefined;
+  /** What the rule counts in, for `capped`: Prices' "quota period", x402's "calendar month". */
+  period?: string;
+  /** The date, for `capped`; Prices' own by default. */
+  describeDate?: (value: string | null | undefined) => string;
 }) {
   switch (outcome) {
     case "has_key":
@@ -96,8 +102,8 @@ export function IssueBanner({
       if (nextEligibleAt === undefined) return null;
       return (
         <p data-testid="issue-capped" role="alert">
-          No new key yet: you deactivated your previous key this quota period, and a replacement can
-          be issued from <strong>{describeNextEligible(nextEligibleAt)}</strong>. Until then you do
+          No new key yet: you deactivated your previous key this {period}, and a replacement can
+          be issued from <strong>{describeDate(nextEligibleAt)}</strong>. Until then you do
           not have a working key.
         </p>
       );

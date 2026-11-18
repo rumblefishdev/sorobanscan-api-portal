@@ -14,6 +14,7 @@ import { color, font, radius } from "../prices/theme/tokens";
 import { AccountNavbar, SignOutFailed } from "./AccountNavbar";
 import { CheckingCard, SessionFailedCard } from "./LoginPage";
 import { PricesTab } from "./prices/PricesTab";
+import { X402Tab } from "./x402/X402Tab";
 import { enabledProducts, PRODUCT_NAME, PRODUCTS, type Product } from "./products";
 import { useSignOut, type Session } from "./session";
 
@@ -177,6 +178,8 @@ export function DashboardPage({ session }: { session: Session }) {
               >
                 {selected === "prices" ? (
                   <PricesTab account={{ id: session.id, username: session.username }} />
+                ) : selected === "x402" ? (
+                  <X402Tab account={{ id: session.id, username: session.username }} />
                 ) : (
                   <DashboardCard title={PRODUCT_NAME[selected]}>
                     <Typography variant="body1" sx={{ color: color.text.secondary }}>
