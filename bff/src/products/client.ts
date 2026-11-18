@@ -28,10 +28,10 @@ export type IssueBody = { outcome: IssueOutcome; next_eligible_at?: string } & R
 >;
 
 /**
- * A call's outcome. `ok`: the product's answer, a JSON object, for the page as it is. Otherwise what the
- * page is told instead, as `{"error": error, "details"?: details}` with `status`: the product's own code
- * and details, or the hub's `product_not_configured` (503), `<product>_busy` (503) or
- * `<product>_unavailable` (502).
+ * A call's outcome. `ok`: the product's answer, a JSON object, for the page as it is. Otherwise
+ * what the page is told instead, as `{"error": error, "details"?: details}` with `status`: the
+ * product's own code and details, or the hub's `product_not_configured` (503), `<product>_busy`
+ * (503) or `<product>_unavailable` (502).
  */
 export type ProductAnswer<Body = Record<string, unknown>> =
   | { ok: true; body: Body }
@@ -57,7 +57,10 @@ export interface ProductClient {
 }
 
 export interface ProductClientOptions {
-  /** The token's product, and the prefix of `<product>_busy`, `<product>_unavailable` and of the log events. */
+  /**
+   * The token's product, and the prefix of `<product>_busy`, `<product>_unavailable` and of the
+   * log events.
+   */
   product: TokenProduct;
   /** The product's name in a log line's words: "Prices", "x402". */
   label: string;
@@ -95,29 +98,28 @@ interface Call {
 /** The four calls, with the key events they log under `product`'s prefix. */
 const callsOf = (product: TokenProduct) =>
   ({
-  account: { method: "GET", path: "/account", act: "read" },
-  reveal: {
-    method: "POST",
-    path: "/key/reveal",
-    act: "reveal",
-    event: () => `${product}_key_revealed`,
-  },
-  revoke: {
-    method: "POST",
-    path: "/key/revoke",
-    act: "revoke",
-    event: () => `${product}_key_revoked`,
-  },
-  issue: {
-    method: "POST",
-    path: "/key/issue",
-    act: "issue",
-    event: (body) => `${product}_key_issue ${String(body.outcome)}`,
-    holds: (body) => (ISSUE_OUTCOMES as readonly unknown[]).includes(body.outcome),
-    keyEvent: true,
-  },
-}) as const satisfies Record<string, Call>;
-
+    account: { method: "GET", path: "/account", act: "read" },
+    reveal: {
+      method: "POST",
+      path: "/key/reveal",
+      act: "reveal",
+      event: () => `${product}_key_revealed`,
+    },
+    revoke: {
+      method: "POST",
+      path: "/key/revoke",
+      act: "revoke",
+      event: () => `${product}_key_revoked`,
+    },
+    issue: {
+      method: "POST",
+      path: "/key/issue",
+      act: "issue",
+      event: (body) => `${product}_key_issue ${String(body.outcome)}`,
+      holds: (body) => (ISSUE_OUTCOMES as readonly unknown[]).includes(body.outcome),
+      keyEvent: true,
+    },
+  }) as const satisfies Record<string, Call>;
 
 /** `ms` in seconds, as a log line says it: `20`, `7.5`. */
 const seconds = (ms: number) => String(Math.round(ms / 100) / 10);

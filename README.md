@@ -148,6 +148,9 @@ naming the setting, whether or not the others are set; when the server restarts 
 change to the config or an `.env` file), Vite logs "server restart failed" and keeps the old
 server running.
 
+The x402 tab is opt-in: `HUB_PRODUCTS` is `prices` unless set, and `HUB_PRODUCTS=prices,x402` turns
+on x402's routes (below). Without it `/api/hub/x402/*` answers 400 `unknown_product`.
+
 Only the dev and preview servers run it: deploying it (in AWS, beside the explorer's CloudFront,
 the cutover's step 1) is a later plan.
 
@@ -202,6 +205,32 @@ backend reads the secret through the AWS SDK's default credentials, keeps it 5 m
 logs it. A read that fails (no credentials, no access, a malformed secret, no answer in 15
 seconds) is logged once as `product_secret_unavailable`, with the reason, and is tried again after
 10 seconds.
+
+### The token to x402
+
+The x402 tab (turned on by `HUB_PRODUCTS=prices,x402`) is the same contract, with `product: x402`
+in its calls (`bff/src/products/client.ts`): `GET /api/hub/x402/account`,
+`POST /api/hub/x402/key/reveal`, `POST /api/hub/x402/key/revoke` and, from "Get API Key" with
+`product=x402`, `key/issue`, answered and logged as Prices' are, under `x402_busy`,
+`x402_unavailable` and the `x402_` log events. The browser lands on
+`/api/dashboard/x402?issue=<outcome>`. A token for x402 is signed under x402's own audience and
+context, so it is no good to Prices, nor Prices' to x402. Its settings, beside Prices':
+
+- `HUB_X402_TOKEN_SECRET`: the secret's name in Secrets Manager, `sorobanscan-hub/production/x402-token`
+  unless set; the name, not the value, as `HUB_PRICES_TOKEN_SECRET` is.
+- `X402_HUB_API`: x402's hub contract, `https://x402-portal.sorobanscan.com/api/hub/v1` unless
+  set; https with no trailing slash (http on this machine only), as `PRICES_HUB_API` is.
+
+The secret is made as Prices' is, once, in `eu-central-1`:
+
+```sh
+aws secretsmanager create-secret --name sorobanscan-hub/production/x402-token --region eu-central-1 \
+  --secret-string "{\"current\":\"$(openssl rand -base64 32)\"}"
+```
+
+x402's backend reads a copy of that value from a file on its own server, not from AWS. One
+product's secret out of reach fails that product's calls alone (503 `product_not_configured`);
+the others answer.
 
 Changing the value is Prices' procedure, with its commands: "Changing the value without a gap" in
 `docs/runbooks/hub-contract.md` of `rumblefishdev/stellar-prices-api`. Prices keeps the value it
