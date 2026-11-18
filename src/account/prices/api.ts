@@ -107,7 +107,10 @@ export async function call(
       });
       body = await response.json().catch(() => undefined);
     } catch {
-      throw new HubError(asking.signal.aborted ? "timeout" : "unreachable");
+      // The caller's own abort is neither: its answer is no longer wanted, and is discarded.
+      throw new HubError(
+        signal?.aborted ? "aborted" : asking.signal.aborted ? "timeout" : "unreachable",
+      );
     }
     if (response.ok) {
       if (!isObject(body)) throw new HubError("unreadable", response.status);
