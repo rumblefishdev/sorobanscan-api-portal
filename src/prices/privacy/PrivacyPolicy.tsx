@@ -3,10 +3,12 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import type { ReactNode } from 'react';
 
+import { enabledProducts } from '../../account/products';
 import { DocPage, DocSection } from '../landing/DocPrimitives';
 import { color, font } from '../theme/tokens';
-import { parsePolicy, type Block } from './policy';
+import { appendSection, parsePolicy, type Block } from './policy';
 import policyMd from './privacy-policy.md?raw';
+import x402Md from './privacy-policy-x402.md?raw';
 
 /**
  * The privacy policy (task 0303), rendered from `privacy-policy.md` — the
@@ -16,6 +18,13 @@ import policyMd from './privacy-policy.md?raw';
  * page's lede; each section's first paragraph is its lede.
  */
 export const POLICY = parsePolicy(policyMd);
+
+/**
+ * What the page draws: the reviewed document, and after its last section x402's, in
+ * `privacy-policy-x402.md`, only when the build turns x402 on (`VITE_PRODUCTS`).
+ */
+const policyOf = (products: readonly string[]) =>
+  products.includes('x402') ? appendSection(POLICY, x402Md) : POLICY;
 
 /**
  * The date of the text in `privacy-policy.md`. The document carries none of
@@ -79,9 +88,10 @@ function BlockView({ block }: { block: Block }) {
 }
 
 export default function PrivacyPolicy() {
+  const policy = policyOf(enabledProducts(import.meta.env.VITE_PRODUCTS));
   return (
     <DocPage
-      sections={POLICY.sections.map((s) => ({ id: s.id, label: s.title }))}
+      sections={policy.sections.map((s) => ({ id: s.id, label: s.title }))}
       eyebrow={
         <Typography
           variant="overline"
@@ -91,14 +101,14 @@ export default function PrivacyPolicy() {
           Version of {POLICY_DATED}
         </Typography>
       }
-      title={POLICY.title}
-      lede={POLICY.intro.map((p, i) => (
+      title={policy.title}
+      lede={policy.intro.map((p, i) => (
         <Box component="span" key={i} sx={{ display: 'block', mt: i ? 1 : 0 }}>
           {inline(p)}
         </Box>
       ))}
     >
-      {POLICY.sections.map(({ id, number, title, blocks }) => {
+      {policy.sections.map(({ id, number, title, blocks }) => {
         // The section's first paragraph is its lede, under the heading, as
         // the other doc pages draw theirs; the rest is the body.
         const [first, ...rest] = blocks;

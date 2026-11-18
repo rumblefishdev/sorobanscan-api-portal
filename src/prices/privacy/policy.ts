@@ -40,6 +40,18 @@ const slug = (s: string) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');
 
+/**
+ * A section appended to a policy after its last one, numbered after it. The file the section
+ * comes from may carry no numeral of its own.
+ */
+export function appendSection(policy: Policy, md: string): Policy {
+  const added = parsePolicy(md).sections.map((section, i) => ({
+    ...section,
+    number: policy.sections.length + i + 1,
+  }));
+  return { ...policy, sections: [...policy.sections, ...added] };
+}
+
 export function parsePolicy(md: string): Policy {
   const policy: Policy = { title: '', intro: [], sections: [] };
   let para: string[] = [];
@@ -61,7 +73,10 @@ export function parsePolicy(md: string): Policy {
 
   for (const raw of md.split('\n')) {
     const line = raw.trimEnd();
-    if (!line) {
+    if (/^<!--.*-->$/.test(line)) {
+      // A one-line HTML comment, such as a draft's note to its reviewers: not text.
+      continue;
+    } else if (!line) {
       flush();
     } else if (line.startsWith('# ')) {
       policy.title = heading(line.slice(2));
