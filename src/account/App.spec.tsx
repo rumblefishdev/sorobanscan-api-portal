@@ -39,6 +39,9 @@ const NO_KEY = {
   details: { usage: null, free_rate_limit_per_second: 1 },
 };
 
+/** x402's account with no key (`x402/X402Tab.spec.tsx` has more). */
+const X402_NO_KEY = { key: { state: "none", can_issue: true }, details: { showable: false } };
+
 /**
  * The hub's backend: `/me` answered by `me`, the sign-out by `logout`, the Prices tab's account
  * with no key. Anything else is a request the pages shouldn't make.
@@ -52,6 +55,9 @@ function stubBackend(
     if (url === "/api/hub/auth/logout" && init?.method === "POST") return logout();
     if (url === "/api/hub/prices/account" && (init?.method ?? "GET") === "GET") {
       return answer(200, NO_KEY);
+    }
+    if (url === "/api/hub/x402/account" && (init?.method ?? "GET") === "GET") {
+      return answer(200, X402_NO_KEY);
     }
     throw new Error(`unexpected request to ${String(url)}`);
   });
@@ -521,6 +527,31 @@ describe("/dashboard", () => {
     expect(x402.getAttribute("aria-selected")).toBe("true");
     expect(screen.getByRole("tabpanel", { name: "x402" })).toBeTruthy();
     expect(where).toBe("/dashboard/x402");
+  });
+
+  it("shows the x402 tab's key card at /dashboard/x402, and Prices' at its own address", async () => {
+    vi.stubEnv("VITE_PRODUCTS", "prices,x402");
+    const fetchMock = stubBackend(() => answer(200, SIGNED_IN));
+    renderAt("/api/dashboard/x402");
+    const panel = await screen.findByRole("tabpanel", { name: "x402" });
+    expect(await within(panel).findByRole("button", { name: "Get API Key" })).toBeTruthy();
+    expect(within(panel).getByRole("heading", { level: 2, name: "Mainnet (pubnet)" })).toBeTruthy();
+    expect(within(panel).queryByText(/Coming soon|connect here/)).toBeNull();
+    expect(fetchMock).toHaveBeenCalledWith("/api/hub/x402/account", expect.anything());
+    // Only the open tab asks: Prices' account isn't read while x402's is shown.
+    expect(fetchMock).not.toHaveBeenCalledWith("/api/hub/prices/account", expect.anything());
+  });
+
+  it("asks nothing of x402 while its tab is off", async () => {
+    vi.stubEnv("VITE_PRODUCTS", "prices");
+    const fetchMock = stubBackend(() => answer(200, SIGNED_IN));
+    renderAt("/api/dashboard");
+    await screen.findByRole("tabpanel", { name: "Prices API" });
+    fireEvent.click(screen.getByRole("tab", { name: /^x402/ }));
+    await settle();
+    expect(screen.getByRole("tab", { name: /^x402/ }).textContent).toMatch(/Coming soon/);
+    expect(fetchMock.mock.calls.map(([url]) => String(url)).filter((u) => u.includes("/x402/")))
+      .toEqual([]);
   });
 
   // Only the selected tab's panel is rendered, so only that tab may name one: an
