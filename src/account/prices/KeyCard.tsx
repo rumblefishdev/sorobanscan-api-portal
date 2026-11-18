@@ -103,7 +103,10 @@ export function KeyCard({
 
   return (
     <DashboardCard title={justIssued ? "Your API Key is ready" : "API Key"} status={status}>
-      {outcome === "issued" && (view.state === "loading" || key?.state === "active") && (
+      {/* Prices' line for the key the round trip made. Kept over an account read that failed:
+          the key was made all the same, and without it the failure below reads as a failed
+          issue. Where the account doesn't list the key yet, `settling` says so instead. */}
+      {outcome === "issued" && (view.state !== "ok" || key?.state === "active") && (
         <p data-testid="issue-issued">
           Welcome! Your API key has been generated. Copy it below and make your first request —
           the Quick Start guide has everything you need.
