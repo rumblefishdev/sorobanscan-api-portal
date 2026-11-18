@@ -1,8 +1,9 @@
 import { render, screen, within } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import PrivacyPolicy, { POLICY } from './PrivacyPolicy';
 import policyMd from './privacy-policy.md?raw';
+import rendered from './privacy-policy.rendered.txt?raw';
 
 /**
  * The text is the reviewed document and the page is a reading of it, so the
@@ -68,5 +69,41 @@ describe('the privacy policy page', () => {
     expect(screen.getByText('identify').tagName).toBe('CODE');
     // The date the page carries for the text.
     expect(screen.getByText(/version of 29 september 2026/i)).toBeTruthy();
+  });
+});
+
+describe('the privacy policy page and x402', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('is exactly the reviewed document, as it was, while x402 is off', () => {
+    // `privacy-policy.rendered.txt` is the page's text as it was drawn before x402's
+    // section existed; the default build and a build naming Prices alone must match it.
+    for (const setting of [undefined, '', 'prices']) {
+      vi.stubEnv('VITE_PRODUCTS', setting as string);
+      const { container, unmount } = render(<PrivacyPolicy />);
+      expect(container.textContent).toBe(rendered);
+      expect(screen.queryByText(/x402 Facilitator API keys/)).toBeNull();
+      unmount();
+    }
+  });
+
+  it('adds x402 Facilitator API keys after the last section, in the rail too, when x402 is on', () => {
+    vi.stubEnv('VITE_PRODUCTS', 'prices,x402');
+    render(<PrivacyPolicy />);
+
+    const headings = screen.getAllByRole('heading', { level: 2 });
+    expect(headings).toHaveLength(17);
+    expect(headings[16].textContent).toBe('17. x402 Facilitator API keys');
+    const rail = within(
+      screen.getByRole('navigation', { name: 'On this page' }),
+    );
+    const links = rail.getAllByRole('link');
+    expect(links).toHaveLength(17);
+    expect(links[16].textContent).toBe('x402 Facilitator API keys');
+    // The reviewed sections stay as they were, and the file's first-line comment is not drawn.
+    expect(headings[0].textContent).toBe('1. Controller of Your Personal Data');
+    expect(document.body.textContent).not.toContain('<!--');
+    expect(document.body.textContent).not.toMatch(/counsel/);
+    expect(document.body.textContent).toMatch(/SHA-256/);
   });
 });

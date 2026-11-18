@@ -143,8 +143,9 @@ The Discord application must list the callback among its redirects:
 Without the three settings `/api/hub/*` answers 503 `{"error":"sign_in_not_configured"}` and
 everything else runs as before. With only one or two of them it answers the same, and the server
 warns at start, naming the ones missing. A malformed `HUB_SESSION_SECRET`, `DISCORD_GUILD_ID` or
-`HUB_PUBLIC_ORIGIN`, or one of the Prices tab's settings below, stops the server from starting,
-naming the setting, whether or not the others are set; when the server restarts itself (after a
+`HUB_PUBLIC_ORIGIN`, or a malformed setting of either product's below (`HUB_PRODUCTS`, the secrets'
+names, the APIs' addresses, `MIN_ACCOUNT_AGE_MINUTES`; x402's too, with x402 off), stops the
+server from starting, naming the setting, whether or not the others are set; when the server restarts itself (after a
 change to the config or an `.env` file), Vite logs "server restart failed" and keeps the old
 server running.
 
@@ -269,6 +270,21 @@ The Prices tab's other settings, optional, in `.env.local` like the sign-in's:
   backend has no routes for stops the server.
 - `MIN_ACCOUNT_AGE_MINUTES`: how old a Discord account must be, in minutes, to be issued a key; 5
   unless set.
+
+### Trying the x402 tab locally
+
+With the secret in place (above) and a profile that may read it:
+
+```sh
+VITE_PRODUCTS=prices,x402 HUB_PRODUCTS=prices,x402 AWS_PROFILE=stellar pnpm dev
+```
+
+The tab then works on production's x402 backend, `https://x402-portal.sorobanscan.com`. Revoking a
+key there holds back a new one until the next calendar month (UTC), so try revoke last, or on a
+second Discord account. While that backend is not deployed, the tab says x402 is unavailable.
+The privacy policy page (`/api/privacy-policy`) shows x402's section, "x402 Facilitator API
+keys" (`src/prices/privacy/privacy-policy-x402.md`), only in a build with `VITE_PRODUCTS` naming
+`x402`; it is a draft, not reviewed by counsel.
 
 ## The sign-in page and the dashboard
 
