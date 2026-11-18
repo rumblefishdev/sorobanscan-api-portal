@@ -1,17 +1,17 @@
 /*
- * The token the hub's backend gives a product (Prices, x402) on each call, as the shared sign-in spec's decision 15
- * has it: `v1.<payload>.<mac>`, the claims' JSON in base64url and its HMAC-SHA256 under the
- * secret both sides read from AWS Secrets Manager (`product-secret.ts`). Prices checks it against
+ * The token the hub's backend gives a product (Prices, x402) on each call, as the shared sign-in
+ * spec's decision 15 has it: `v1.<payload>.<mac>`, the claims' JSON in base64url and its HMAC-SHA256 under the
+ * secret both sides read from AWS Secrets Manager (`product-secret.ts`). The product checks it against
  * the same test vector (`bff/test/token.test.ts`), so a byte changed here is a token it refuses.
  */
 import { createHmac, randomBytes } from "node:crypto";
 import { isSnowflake } from "./discord.ts";
 
-/** What a token lets the call do: one per call to Prices' contract. */
+/** What a token lets the call do: one per call to a product's contract. */
 const ACTS = ["read", "reveal", "revoke", "issue"] as const;
 export type Act = (typeof ACTS)[number];
 
-/** The secret's length, as the spec's decision 12 gives it and Prices requires. */
+/** The secret's length, as the spec's decision 12 gives it and a product requires. */
 export const SECRET_BYTES = 32;
 /** How long a token holds after its `iat`. */
 const TOKEN_TTL_SECONDS = 60;
@@ -30,7 +30,7 @@ export interface TokenRequest {
   product: TokenProduct;
   /** The signed-in Discord account's id: the token's `sub` is `discord:<id>`. */
   discordId: string;
-  /** Its username, for Prices to name the account by. Nothing is decided by it. */
+  /** Its username, for the product to name the account by. Nothing is decided by it. */
   name: string;
   act: Act;
   /** The time, in milliseconds as `Date.now()` gives it: `iat` is its whole seconds. */
@@ -40,7 +40,7 @@ export interface TokenRequest {
 }
 
 /**
- * A token for one call to Prices' hub contract, good for {@link TOKEN_TTL_SECONDS} from `now`.
+ * A token for one call to a product's hub contract, good for {@link TOKEN_TTL_SECONDS} from `now`.
  * Throws on a malformed request, naming the field and never the secret.
  */
 export function mintToken(
