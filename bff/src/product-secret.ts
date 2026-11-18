@@ -18,6 +18,12 @@ const SECRET_REGION = "eu-central-1";
 export const SECRET_TTL_MS = 5 * 60 * 1000;
 /** How long a failed read is answered from memory, so a burst of calls doesn't each wait on AWS. */
 export const FAILURE_TTL_MS = 10 * 1000;
+/**
+ * How long a read may take, credentials included, before it counts as failed. The client's own
+ * timeouts cover the request to Secrets Manager, not the credential chain before it (an SSO
+ * profile, a metadata endpoint), and a read that never settled would be shared by every later call.
+ */
+export const SECRET_READ_DEADLINE_MS = 15 * 1000;
 
 /** The part of Secrets Manager's client the secret is read through; a fake in the tests. */
 export interface SecretsClient {
@@ -49,9 +55,10 @@ export function secretsManager(): SecretsClient {
 /**
  * The current value of the secret named `name`: 32 bytes, read from Secrets Manager at the first
  * call and kept for {@link SECRET_TTL_MS}. Calls while a read is under way share it. A read that
- * fails, with no credentials, no access or a malformed secret, rejects with a
- * {@link ProductSecretError}, is logged once here as `product_secret_unavailable`, and is
- * answered so for at most {@link FAILURE_TTL_MS}; the next call after reads again.
+ * fails, with no credentials, no access, a malformed secret or no answer in
+ * {@link SECRET_READ_DEADLINE_MS}, rejects with a {@link ProductSecretError}, is logged once here
+ * as `product_secret_unavailable`, and is answered so for at most {@link FAILURE_TTL_MS}; the next
+ * call after reads again.
  *
  * `client` is made at the first read unless given, so nothing asks AWS until a secret is needed.
  */
@@ -67,12 +74,30 @@ export function productSecret(
       `The secret ${name} in AWS Secrets Manager (${SECRET_REGION}) ${reason}`,
     );
 
+  /** Secrets Manager's answer, or a {@link ProductSecretError} once the deadline has passed. */
+  async function fetchText(): Promise<string | undefined> {
+    client ??= secretsManager();
+    const asked = client.send(new GetSecretValueCommand({ SecretId: name }));
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const deadline = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(unavailable(`could not be read in ${SECRET_READ_DEADLINE_MS / 1000} s`)),
+        SECRET_READ_DEADLINE_MS,
+      );
+    });
+    try {
+      return (await Promise.race([asked, deadline])).SecretString;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   async function read(): Promise<Buffer> {
     let text: string | undefined;
     try {
-      client ??= secretsManager();
-      ({ SecretString: text } = await client.send(new GetSecretValueCommand({ SecretId: name })));
+      text = await fetchText();
     } catch (error) {
+      if (error instanceof ProductSecretError) throw error;
       // By name only: the SDK's message can carry the caller's ARN, and nothing of it says more.
       throw unavailable(`could not be read: ${error instanceof Error ? error.name : "a failure"}`);
     }
