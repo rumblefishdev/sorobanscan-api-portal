@@ -73,10 +73,7 @@ export function parsePolicy(md: string): Policy {
 
   for (const raw of md.split('\n')) {
     const line = raw.trimEnd();
-    if (/^<!--.*-->$/.test(line)) {
-      // A one-line HTML comment, such as a draft's note to its reviewers: not text.
-      continue;
-    } else if (!line) {
+    if (!line) {
       flush();
     } else if (line.startsWith('# ')) {
       policy.title = heading(line.slice(2));

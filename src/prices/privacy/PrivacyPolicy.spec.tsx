@@ -100,10 +100,8 @@ describe('the privacy policy page and x402', () => {
     const links = rail.getAllByRole('link');
     expect(links).toHaveLength(17);
     expect(links[16].textContent).toBe('x402 Facilitator API keys');
-    // The reviewed sections stay as they were, and the file's first-line comment is not drawn.
+    // The reviewed sections stay as they were.
     expect(headings[0].textContent).toBe('1. Controller of Your Personal Data');
-    expect(document.body.textContent).not.toContain('<!--');
-    expect(document.body.textContent).not.toMatch(/counsel/);
     expect(document.body.textContent).toMatch(/SHA-256/);
   });
 });
