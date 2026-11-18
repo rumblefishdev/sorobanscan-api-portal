@@ -9,33 +9,70 @@ import { Link as RouterLink } from "react-router";
 
 import { Wordmark } from "../prices/landing/Chrome";
 import { DiscordIcon } from "../prices/landing/DiscordIcon";
-import { API_REFERENCE, QUICKSTART } from "../prices/landing/links";
+import {
+  API_REFERENCE,
+  DOCS_ROUTE,
+  HUB_DASHBOARD,
+  QUICKSTART,
+  QUICKSTART_ROUTE,
+} from "../prices/landing/links";
+import { Callout } from "../prices/landing/LoginCard";
 import { cardBorder } from "../prices/landing/primitives";
 import { color, font, radius } from "../prices/theme/tokens";
+
+/** The pages the bar is drawn over: the dashboard, and the Prices pages it links to. */
+export type AccountNavbarPage = "dashboard" | "quick-start" | "docs" | "privacy-policy";
 
 /**
  * The dashboard's bar: the Prices portal's signed-in bar (`DashboardNavbar` in
  * `src/prices/landing/DashboardChrome.tsx`), drawn the same, with this tree's links.
  *
  * Not Prices' own component: its Quick start and OpenAPI Docs are routes of the Prices router,
- * and in this tree's router they would resolve to `/api/quick-start`. Here they are plain links
- * to the Prices pages; only "Dashboard" is a route of this tree. Its measures and the reasons for
- * them (two rows at 375 px, a named sign-out at every width) are Prices'; see its comments.
+ * and in this tree's router they would resolve to `/api/quick-start`. Its measures and the reasons
+ * for them (two rows at 375 px, a named sign-out at every width) are Prices'; see its comments.
+ *
+ * The Prices pages its links open draw it too, for a visitor signed in to the hub (akot,
+ * 2026-11-18; `PageBar` in `src/prices/app/app.tsx`), so the bar stays the same from the
+ * dashboard to the quick start and the API reference. A link is a route of the tree the bar is
+ * drawn in and a plain link to the other tree's page: under the other tree's basename a router
+ * link would name a page of this one.
  */
 export function AccountNavbar({
   username,
   onSignOut,
   signingOut = false,
+  current = "dashboard",
 }: {
   username: string;
   onSignOut: () => void;
   /** A sign-out is in flight: the button is shut, so a second press sends no second `POST`. */
   signingOut?: boolean;
+  /**
+   * The page the bar is over, whose link is underlined: the dashboard, this tree's, or a Prices
+   * page. The privacy policy is a Prices page under the bar that isn't in it, so nothing is
+   * underlined there.
+   */
+  current?: AccountNavbarPage;
 }) {
-  const links = [
-    { label: "Dashboard", to: "/dashboard", current: true },
-    { label: "Quick start", href: QUICKSTART, current: false },
-    { label: "OpenAPI Docs", href: API_REFERENCE, current: false },
+  const onDashboard = current === "dashboard";
+  // From the Prices pages, "Dashboard" opens the Prices tab, where Prices' own `/dashboard`
+  // sends the browser too.
+  const links: { label: string; to?: string; href?: string; current: boolean }[] = [
+    {
+      label: "Dashboard",
+      ...(onDashboard ? { to: "/dashboard" } : { href: HUB_DASHBOARD }),
+      current: onDashboard,
+    },
+    {
+      label: "Quick start",
+      ...(onDashboard ? { href: QUICKSTART } : { to: QUICKSTART_ROUTE }),
+      current: current === "quick-start",
+    },
+    {
+      label: "OpenAPI Docs",
+      ...(onDashboard ? { href: API_REFERENCE } : { to: DOCS_ROUTE }),
+      current: current === "docs",
+    },
   ];
 
   return (
@@ -192,6 +229,20 @@ export function AccountNavbar({
           </Stack>
         </Stack>
       </Container>
+    </Box>
+  );
+}
+
+/**
+ * What the page under the bar says when Sign out didn't work (`useSignOut`'s `failed`): this
+ * browser is still signed in. An `alert`, so a screen reader says it when it appears.
+ */
+export function SignOutFailed() {
+  return (
+    <Box role="alert">
+      <Callout variant="error">
+        <p>Sign-out failed. Try again.</p>
+      </Callout>
     </Box>
   );
 }
