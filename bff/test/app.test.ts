@@ -18,6 +18,10 @@ const SETTINGS: HubSettings = {
   discordClientSecret: "the-client-secret",
   sessionSecret: Buffer.alloc(32, 9),
   guildId: GUILD,
+  pricesTokenSecretName: "sorobanscan-hub/production/prices-token",
+  pricesHubApi: "https://prices-api.sorobanscan.com/api/hub/v1",
+  products: ["prices"],
+  minAccountAgeMinutes: 5,
 };
 
 /** A signed value: base64url claims, a dot, a base64url signature. */
@@ -188,6 +192,10 @@ describe("the settings", () => {
       [{ HUB_SESSION_SECRET: "too-short" }, /HUB_SESSION_SECRET/],
       [{ DISCORD_GUILD_ID: "Stellar" }, /DISCORD_GUILD_ID/],
       [{ HUB_PUBLIC_ORIGIN: "localhost:5173" }, /HUB_PUBLIC_ORIGIN/],
+      [{ HUB_PRICES_TOKEN_SECRET: "prices token" }, /HUB_PRICES_TOKEN_SECRET/],
+      [{ PRICES_HUB_API: "prices-api.sorobanscan.com" }, /PRICES_HUB_API/],
+      [{ HUB_PRODUCTS: "price" }, /HUB_PRODUCTS/],
+      [{ MIN_ACCOUNT_AGE_MINUTES: "five" }, /MIN_ACCOUNT_AGE_MINUTES/],
     ] as const) {
       for (const absent of Object.keys(ENV).filter((name) => !(name in malformed))) {
         expect(
@@ -236,6 +244,105 @@ describe("the settings", () => {
     ]) {
       expect(() => readSettings({ ...ENV, HUB_PUBLIC_ORIGIN: origin }, "/api/"), origin).toThrow(
         /HUB_PUBLIC_ORIGIN/,
+      );
+    }
+  });
+
+  it("take the Prices tab's from the environment, production's by default", () => {
+    expect(
+      readSettings(
+        {
+          ...ENV,
+          HUB_PRICES_TOKEN_SECRET: "sorobanscan-hub/staging/prices-token",
+          PRICES_HUB_API: "https://prices-api.example.com/api/hub/v1",
+          HUB_PRODUCTS: " prices ",
+          MIN_ACCOUNT_AGE_MINUTES: "0",
+        },
+        "/api/",
+      ),
+    ).toEqual({
+      ...SETTINGS,
+      pricesTokenSecretName: "sorobanscan-hub/staging/prices-token",
+      pricesHubApi: "https://prices-api.example.com/api/hub/v1",
+      products: ["prices"],
+      minAccountAgeMinutes: 0,
+    });
+    // Empty is unset, as for `DISCORD_GUILD_ID`.
+    const empty = {
+      HUB_PRICES_TOKEN_SECRET: "",
+      PRICES_HUB_API: "",
+      HUB_PRODUCTS: "",
+      MIN_ACCOUNT_AGE_MINUTES: "",
+    };
+    expect(readSettings({ ...ENV, ...empty }, "/api/")).toEqual(SETTINGS);
+    // Prices run on this machine, over plain HTTP, and an API at a host's root.
+    for (const api of [
+      "http://localhost:8080/api/hub/v1",
+      "http://127.0.0.1:8080/api/hub/v1",
+      "http://[::1]:8080/api/hub/v1",
+      "https://prices-api.example.com",
+    ]) {
+      expect(readSettings({ ...ENV, PRICES_HUB_API: api }, "/api/")?.pricesHubApi, api).toBe(api);
+    }
+    expect(readSettings({ ...ENV, MIN_ACCOUNT_AGE_MINUTES: "1440" }, "/api/")).toMatchObject({
+      minAccountAgeMinutes: 1440,
+    });
+  });
+
+  // The setting holds the secret's name, but `HUB_SESSION_SECRET` beside it holds a value: one
+  // pasted here by mistake must not be echoed, or sent to AWS as a name.
+  it("refuse a token secret's name that isn't a name, without repeating it", () => {
+    const pasted = Buffer.alloc(32, 0xa5).toString("base64");
+    for (const name of [
+      "my token",
+      "my-token\n",
+      '"my/token"',
+      "a".repeat(513),
+      pasted,
+      Buffer.alloc(64, 0xa5).toString("base64"),
+    ]) {
+      let message = "";
+      try {
+        readSettings({ ...ENV, HUB_PRICES_TOKEN_SECRET: name }, "/api/");
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      expect(message, name).toMatch(/HUB_PRICES_TOKEN_SECRET/);
+      expect(message, name).not.toContain(name.trim());
+    }
+  });
+
+  it("refuse a Prices API that isn't HTTPS, or names a query, fragment, user or trailing slash", () => {
+    for (const api of [
+      "prices-api.sorobanscan.com/api/hub/v1",
+      "http://prices-api.sorobanscan.com/api/hub/v1",
+      "https://prices-api.sorobanscan.com/api/hub/v1/",
+      "https://prices-api.sorobanscan.com/api/hub/v1?key=1",
+      "https://prices-api.sorobanscan.com/api/hub/v1#top",
+      "https://user:password@prices-api.sorobanscan.com/api/hub/v1",
+      "ftp://prices-api.sorobanscan.com/api/hub/v1",
+    ]) {
+      let message = "";
+      try {
+        readSettings({ ...ENV, PRICES_HUB_API: api }, "/api/");
+      } catch (error) {
+        message = (error as Error).message;
+      }
+      expect(message, api).toMatch(/PRICES_HUB_API/);
+      // A user and password in it are not printed.
+      expect(message, api).not.toContain("password");
+    }
+  });
+
+  it("refuse products this backend doesn't serve, and an age that isn't whole minutes", () => {
+    for (const products of ["price", "Prices", "prices,", "prices;x402", "x402", ",prices"]) {
+      expect(() => readSettings({ ...ENV, HUB_PRODUCTS: products }, "/api/"), products).toThrow(
+        /HUB_PRODUCTS/,
+      );
+    }
+    for (const age of ["five", "-1", "5.5", "1e3", " 5", "0x10", "99999999"]) {
+      expect(() => readSettings({ ...ENV, MIN_ACCOUNT_AGE_MINUTES: age }, "/api/"), age).toThrow(
+        /MIN_ACCOUNT_AGE_MINUTES/,
       );
     }
   });
