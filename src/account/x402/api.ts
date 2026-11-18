@@ -9,7 +9,7 @@ import {
 } from "../prices/api";
 
 /**
- * The x402 tab's calls, all to the hub's backend (`bff/src/products/x402.ts`), which signs a token
+ * The x402 tab's calls, all to the hub's backend (`bff/src/products/client.ts`), which signs a token
  * for each and asks x402's hub contract: the page never calls x402. The same transport as the
  * Prices tab's (`../prices/api.ts`: the timeout, the non-JSON answer, the `HubError`), under
  * `hub/x402/`.
@@ -129,6 +129,9 @@ const WORDS: Record<string, string> = {
   bad_origin: "the request didn't come from this page — reload it and try again",
   no_key: "you have no API key",
   key_revoked: "your API key was revoked",
+  rate_limited: "Too many requests for your account. Wait a minute and try again.",
+  invalid_token:
+    "x402 refused the hub's request — this is ours to fix, so tell us if it keeps happening",
   internal: "the hub failed — try again, and tell us if it keeps happening",
 };
 
