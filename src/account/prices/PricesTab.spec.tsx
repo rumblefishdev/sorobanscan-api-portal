@@ -186,6 +186,24 @@ describe("the Prices tab", () => {
     );
   });
 
+  // akot, 2026-11-18: the button at its own width, content and padding as the Prices pages' other
+  // primary buttons have it, centred in the card, not a bar the card's width. jsdom lays nothing
+  // out, so what is pinned is the style that gives it: no full width, and a form that centres it.
+  it.each([
+    ["no key", NO_KEY],
+    ["a revoked key whose cap has passed", REVOKED_OPEN],
+  ])("centres Get API Key at its own width, for %s", async (_, account) => {
+    stubHub({ account: () => answer(200, account) });
+    renderAt("/api/dashboard/prices");
+    const key = await card("API Key");
+    const button = within(key).getByRole("button", { name: "Get API Key" });
+    expect(button.classList.contains("MuiButton-fullWidth")).toBe(false);
+    expect(getComputedStyle(button).width).not.toBe("100%");
+    const form = button.closest("form") as HTMLFormElement;
+    expect(getComputedStyle(form).display).toBe("flex");
+    expect(getComputedStyle(form).justifyContent).toBe("center");
+  });
+
   it("shows an active key masked, with its id, dates and account, as the Prices dashboard does", async () => {
     const fetchMock = stubHub({ account: () => answer(200, ACTIVE) });
     renderAt("/api/dashboard/prices");
