@@ -23,10 +23,10 @@ const NEEDED = REQUIRED_SETTINGS.filter((name) => !(name in DEV_DEFAULTS));
  * mode's `.env` files and `.env.local`, `process.env` winning over them. Without
  * `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET` and `HUB_SESSION_SECRET` every hub route answers
  * 503 `sign_in_not_configured` and the rest of the app runs as before; with only some of them it
- * answers the same and warns, naming the missing ones. A malformed `HUB_SESSION_SECRET`,
- * `DISCORD_GUILD_ID` or `HUB_PUBLIC_ORIGIN` stops the server from starting, naming it, whether or
- * not the others are set. `HUB_PUBLIC_ORIGIN` is `http://localhost:<port>` unless set, with the
- * port the server got, which is not 5173 when that one is taken.
+ * answers the same and warns, naming the missing ones. A malformed setting, any that
+ * `readSettings` reads, stops the server from starting, naming it, whether or not the others are
+ * set. `HUB_PUBLIC_ORIGIN` is `http://localhost:<port>` unless set, with the port the server got,
+ * which is not 5173 when that one is taken.
  */
 export function hubDevServer(): Plugin {
   return {

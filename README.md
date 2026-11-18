@@ -143,12 +143,58 @@ The Discord application must list the callback among its redirects:
 Without the three settings `/api/hub/*` answers 503 `{"error":"sign_in_not_configured"}` and
 everything else runs as before. With only one or two of them it answers the same, and the server
 warns at start, naming the ones missing. A malformed `HUB_SESSION_SECRET`, `DISCORD_GUILD_ID` or
-`HUB_PUBLIC_ORIGIN` stops the server from starting, naming the setting, whether or not the others
-are set; when the server restarts itself (after a change to the config or an `.env` file), Vite
-logs "server restart failed" and keeps the old server running.
+`HUB_PUBLIC_ORIGIN`, or one of the Prices tab's settings below, stops the server from starting,
+naming the setting, whether or not the others are set; when the server restarts itself (after a
+change to the config or an `.env` file), Vite logs "server restart failed" and keeps the old
+server running.
 
 Only the dev and preview servers run it: deploying it (in AWS, beside the explorer's CloudFront,
 the cutover's step 1) is a later plan.
+
+### The token to Prices
+
+For the Prices tab the backend calls Prices' own backend server to server, on Prices' hub
+contract, with a token of its own on each call: `v1.<payload>.<mac>`, the claims' JSON in
+base64url and their HMAC-SHA256 under a secret the hub and Prices share, good for 60 seconds and
+for one act (`read`, `reveal`, `revoke` or `issue`). The format and the test vector both sides pin
+are the shared sign-in spec's decision 15 (`bff/src/token.ts`, `bff/test/token.test.ts`). The
+routes that make those calls are not built yet.
+
+The secret is in AWS Secrets Manager, in `eu-central-1`, as JSON: `{"current": "<base64 of 32
+bytes>"}`, with `"previous"` beside it while it is being changed. The hub signs with `current`;
+Prices accepts either. `HUB_PRICES_TOKEN_SECRET` is its name, `sorobanscan-hub/production/prices-token`
+unless set. The name, not the value: the value is never in a setting, a file or git, and a value
+given here by mistake (base64 of 32 bytes or more) stops the server without printing it. The
+backend reads the secret through the AWS SDK's default credentials, keeps it 5 minutes and never
+logs it. A read that fails (no credentials, no access, a malformed secret) is logged once as
+`product_secret_unavailable`, with the reason, and is tried again after 10 seconds.
+
+Locally the credentials are yours: a profile that may read the secret
+(`secretsmanager:GetSecretValue`), signed in to first if it is an SSO one, named in the command's
+environment:
+
+```sh
+aws sso login --profile <profile>
+AWS_PROFILE=<profile> pnpm dev
+```
+
+`AWS_PROFILE` goes in the environment, not in `.env.local`: the backend's own settings are read
+from there, but the AWS SDK reads only the process's environment.
+
+The secret is created once, by akot, with a value no one sees:
+
+```sh
+aws secretsmanager create-secret --name sorobanscan-hub/production/prices-token --region eu-central-1 --secret-string "{\"current\":\"$(openssl rand -base64 32)\"}"
+```
+
+The Prices tab's other settings, optional, in `.env.local` like the sign-in's:
+
+- `PRICES_HUB_API`: Prices' hub contract, `https://prices-api.sorobanscan.com/api/hub/v1` unless
+  set. HTTPS, or plain HTTP to this machine only; no trailing slash.
+- `HUB_PRODUCTS`: the products whose routes answer, a comma list, `prices` unless set. A name this
+  backend has no routes for stops the server.
+- `MIN_ACCOUNT_AGE_MINUTES`: how old a Discord account must be, in minutes, to be issued a key; 5
+  unless set.
 
 ## The sign-in page and the dashboard
 
