@@ -215,12 +215,19 @@ export function KeyCard({
  */
 function GetKeyForm() {
   return (
-    <form method="post" action={ISSUE_URL} data-testid="get-api-key">
+    <Box
+      component="form"
+      method="post"
+      action={ISSUE_URL}
+      data-testid="get-api-key"
+      sx={{ display: "flex", justifyContent: "center" }}
+    >
       <input type="hidden" name="product" value="prices" />
-      {/* Prices' full-width brand bar for the card's one action (`data-variant="cta"` there). */}
+      {/* Prices' brand button for the card's one action (`data-variant="cta"` there), at its own
+          width and centred, as the Prices pages' other primary buttons, not the card's full width
+          (akot, 2026-11-18). */}
       <Button
         type="submit"
-        fullWidth
         variant="contained"
         sx={{
           minHeight: 56,
@@ -238,7 +245,7 @@ function GetKeyForm() {
         <GlyphBadge icon={AddRoundedIcon} tone="onPrimary" />
         Get API Key
       </Button>
-    </form>
+    </Box>
   );
 }
 
