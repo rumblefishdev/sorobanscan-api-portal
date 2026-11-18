@@ -401,19 +401,45 @@ function ActiveKey({
       setCopyFailure("Copying is not available here — reveal the key and copy it by hand.");
       return;
     }
-    void reveal().then((key) => {
-      if (key === null) return;
-      return clipboard.writeText(key).then(
-        () => {
-          if (!live.current) return;
-          setCopied(true);
-          setCopyFailure(null);
-        },
-        () => {
-          if (live.current) setCopyFailure("Could not copy — reveal the key and copy it by hand.");
-        },
-      );
-    });
+    const done = () => {
+      if (!live.current) return;
+      setCopied(true);
+      setCopyFailure(null);
+    };
+    const refused = () => {
+      if (live.current) setCopyFailure("Could not copy — reveal the key and copy it by hand.");
+    };
+    // WebKit (Safari, and every browser on iOS) lets a page write the clipboard only from within
+    // the press, and the key is a round trip away until it has been shown. So the write starts
+    // here: the key itself when it is held, or a `ClipboardItem` holding the promise of it, which
+    // the browser waits on.
+    if (value !== null) {
+      clipboard.writeText(value).then(done, refused);
+      return;
+    }
+    // One reveal for the press, whichever way it is written.
+    const asked = reveal();
+    if (typeof ClipboardItem === "function" && typeof clipboard.write === "function") {
+      // A failed reveal says why itself (`reveal-failed`); the write it fails is no news.
+      let noKey = false;
+      const text = asked.then((key) => {
+        if (key === null) {
+          noKey = true;
+          throw new Error("no key to copy");
+        }
+        return new Blob([key], { type: "text/plain" });
+      });
+      try {
+        clipboard.write([new ClipboardItem({ "text/plain": text })]).then(done, () => {
+          if (!noKey) refused();
+        });
+        return;
+      } catch {
+        // A browser whose `ClipboardItem` takes no promise: the write below, after the answer.
+        text.catch(() => {});
+      }
+    }
+    void asked.then((key) => (key === null ? undefined : clipboard.writeText(key).then(done, refused)));
   };
 
   const copyButton = (

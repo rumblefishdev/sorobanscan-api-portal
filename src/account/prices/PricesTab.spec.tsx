@@ -228,7 +228,8 @@ describe("the Prices tab", () => {
     expect(requests(fetchMock).filter((r) => r.endsWith("/key/reveal"))).toHaveLength(1);
   });
 
-  it("copies the key it asks the hub for, leaving it masked on screen", async () => {
+  it("copies the key it asks the hub for, leaving it masked on screen, where ClipboardItem is missing", async () => {
+    vi.stubGlobal("ClipboardItem", undefined);
     const writeText = vi.fn(() => Promise.resolve());
     vi.stubGlobal("navigator", { ...navigator, clipboard: { writeText } });
     stubHub({ account: () => answer(200, ACTIVE), reveal: () => answer(200, REVEALED) });
@@ -239,6 +240,122 @@ describe("the Prices tab", () => {
     expect(writeText).toHaveBeenCalledExactlyOnceWith(KEY_VALUE);
     expect(within(key).getByRole("status").textContent).toBe("Copied.");
     expect(within(key).getByTestId("api-key").textContent).toBe(MASK);
+  });
+
+  describe("where ClipboardItem is there", () => {
+    /** The browser's clipboard, as WebKit has it: a write is let through only from the press. */
+    function stubClipboard(write: (text: Promise<Blob>) => Promise<void> = async () => {}) {
+      class ClipboardItem {
+        constructor(readonly items: Record<string, Promise<Blob>>) {}
+      }
+      vi.stubGlobal("ClipboardItem", ClipboardItem);
+      const clipboard = {
+        write: vi.fn(([item]: ClipboardItem[]) => write(item.items["text/plain"])),
+        writeText: vi.fn(() => Promise.resolve()),
+      };
+      vi.stubGlobal("navigator", { ...navigator, clipboard });
+      return clipboard;
+    }
+
+    it("starts the write within the press, the key to come with the hub's answer", async () => {
+      const written: string[] = [];
+      const clipboard = stubClipboard(async (text) => {
+        written.push(await (await text).text());
+      });
+      let answerReveal: (response: Response) => void = () => {};
+      const fetchMock = stubHub({
+        account: () => answer(200, ACTIVE),
+        reveal: () => new Promise<Response>((resolve) => (answerReveal = resolve)),
+      });
+      renderAt("/api/dashboard/prices");
+      const key = await card("API Key");
+      fireEvent.click(within(key).getByRole("button", { name: "Copy key" }));
+      // Before the hub has answered: WebKit refuses a write that starts after the press.
+      expect(clipboard.write).toHaveBeenCalledOnce();
+      expect(written).toEqual([]);
+
+      answerReveal(answer(200, REVEALED));
+      await settle();
+      expect(written).toEqual([KEY_VALUE]);
+      expect(clipboard.writeText).not.toHaveBeenCalled();
+      expect(within(key).getByRole("status").textContent).toBe("Copied.");
+      expect(within(key).getByTestId("api-key").textContent).toBe(MASK);
+      expect(requests(fetchMock).filter((r) => r.endsWith("/key/reveal"))).toHaveLength(1);
+    });
+
+    it("writes a key already shown within the press, without asking the hub again", async () => {
+      const clipboard = stubClipboard();
+      const fetchMock = stubHub({
+        account: () => answer(200, ACTIVE),
+        reveal: () => answer(200, REVEALED),
+      });
+      renderAt("/api/dashboard/prices");
+      const key = await card("API Key");
+      fireEvent.click(within(key).getByRole("button", { name: "Show key" }));
+      await settle();
+      fireEvent.click(within(key).getByRole("button", { name: "Copy key" }));
+      expect(clipboard.writeText).toHaveBeenCalledExactlyOnceWith(KEY_VALUE);
+      await settle();
+      expect(within(key).getByRole("status").textContent).toBe("Copied.");
+      expect(requests(fetchMock).filter((r) => r.endsWith("/key/reveal"))).toHaveLength(1);
+    });
+
+    it("says why the key can't be had when the hub fails, and not that the copy did", async () => {
+      stubClipboard(async (text) => {
+        await text;
+      });
+      stubHub({
+        account: () => answer(200, ACTIVE),
+        reveal: () => answer(502, { error: "prices_unavailable" }),
+      });
+      renderAt("/api/dashboard/prices");
+      const key = await card("API Key");
+      fireEvent.click(within(key).getByRole("button", { name: "Copy key" }));
+      await settle();
+      expect(within(key).getByTestId("reveal-failed").textContent).toBe(
+        "Could not show your API key: the Prices API did not answer — try again in a moment (prices_unavailable).",
+      );
+      expect(within(key).queryByText(/Could not copy/)).toBeNull();
+      expect(within(key).queryByRole("status")).toBeNull();
+    });
+
+    it("writes the key once the hub gives it where ClipboardItem takes no promise", async () => {
+      const clipboard = stubClipboard();
+      vi.stubGlobal(
+        "ClipboardItem",
+        class {
+          constructor() {
+            throw new TypeError("a promise is not a Blob");
+          }
+        },
+      );
+      const fetchMock = stubHub({
+        account: () => answer(200, ACTIVE),
+        reveal: () => answer(200, REVEALED),
+      });
+      renderAt("/api/dashboard/prices");
+      const key = await card("API Key");
+      fireEvent.click(within(key).getByRole("button", { name: "Copy key" }));
+      await settle();
+      expect(clipboard.write).not.toHaveBeenCalled();
+      expect(clipboard.writeText).toHaveBeenCalledExactlyOnceWith(KEY_VALUE);
+      expect(within(key).getByRole("status").textContent).toBe("Copied.");
+      expect(requests(fetchMock).filter((r) => r.endsWith("/key/reveal"))).toHaveLength(1);
+    });
+
+    it("says the copy failed when the browser refuses it", async () => {
+      stubClipboard(() => Promise.reject(new DOMException("refused", "NotAllowedError")));
+      stubHub({ account: () => answer(200, ACTIVE), reveal: () => answer(200, REVEALED) });
+      renderAt("/api/dashboard/prices");
+      const key = await card("API Key");
+      fireEvent.click(within(key).getByRole("button", { name: "Copy key" }));
+      await settle();
+      expect(within(key).getByText(/Could not copy your API key/).textContent).toBe(
+        "Could not copy your API key: Could not copy — reveal the key and copy it by hand.",
+      );
+      expect(within(key).queryByRole("status")).toBeNull();
+      expect(within(key).getByTestId("api-key").textContent).toBe(MASK);
+    });
   });
 
   it("says why the key can't be shown when the hub fails, and keeps it masked", async () => {
