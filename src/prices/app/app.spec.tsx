@@ -88,6 +88,15 @@ const KEY_URL = '/api/key';
 const REWORK_URL = '/api/key/rework';
 /** Where both "get my API key" and every retry link point (task 0189). */
 const ISSUE_HREF = '/api/auth/login?action=issue';
+/**
+ * The hub's backend (the shared sign-in): who is signed in to the hub, which
+ * decides the bar over the quick start, the reference and the privacy policy,
+ * and the hub's sign-out.
+ */
+const HUB_ME_URL = '/api/hub/me';
+const HUB_LOGOUT_URL = '/api/hub/auth/logout';
+/** Nobody signed in to the hub: every page keeps this portal's own bars. */
+const hubSignedOut = () => ({ json: async () => ({ authenticated: false }) });
 
 /**
  * `/config` for an open portal (task 0183) carrying the free plan's rate limit
@@ -128,19 +137,24 @@ const keyNoKey = () => ({
   json: async () => ({ code: 'no_key', message: 'you have no API key yet' }),
 });
 
-/** The portal open, and nobody signed in. */
+/** The portal open, and nobody signed in, here or to the hub. */
 const openAndSignedOut = () =>
   stubRoutes({
     [CONFIG_URL]: openConfig,
     [SPEC_URL]: () => ({ json: async () => FIXTURE }),
     [ME_URL]: () => ({ json: async () => ({ authenticated: false }) }),
+    [HUB_ME_URL]: hubSignedOut,
   });
 
-/** The portal open, with a completed round-trip behind it. */
+/**
+ * The portal open, with a completed round-trip behind it, and nobody signed in
+ * to the hub: the old portal's own signed-in pages.
+ */
 const openAndSignedIn = () =>
   stubRoutes({
     [CONFIG_URL]: openConfig,
     [SPEC_URL]: () => ({ json: async () => FIXTURE }),
+    [HUB_ME_URL]: hubSignedOut,
     [ME_URL]: () => ({
       json: async () => ({
         authenticated: true,
@@ -763,6 +777,308 @@ describe("the hub's sign-in and dashboard", () => {
 
     await waitFor(() => expect(replace).toHaveBeenCalledWith(HUB_DASHBOARD));
     expect(assign).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The hub's bar on the pages it links to (akot, 2026-11-18). The dashboard's
+ * bar opens the quick start and the API reference, and a visitor signed in to
+ * the hub keeps that bar there: Dashboard, Quick start, OpenAPI Docs, their
+ * name and Sign out, the dashboard's own component, not this portal's landing
+ * bar with its Features, FAQ and Sign in. The privacy policy shares their bar.
+ * Without a hub session these pages keep the bar they had.
+ *
+ * Mounted as `main.tsx` mounts it, under the production basename, so the
+ * hrefs are the addresses a visitor gets.
+ */
+describe("the hub's bar on the pages it links to", () => {
+  const replace = vi.fn();
+  const assign = vi.fn();
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    replace.mockReset();
+    assign.mockReset();
+    lastPath = '';
+    lastSearch = '';
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const renderAt = (path: string) =>
+    render(
+      <MemoryRouter
+        basename={ROUTER_BASENAME}
+        initialEntries={[`${ROUTER_BASENAME}${path}`]}
+      >
+        <App />
+        <LocationSpy />
+      </MemoryRouter>,
+    );
+
+  const hubSignedIn = () => ({
+    json: async () => ({
+      authenticated: true,
+      id: '80351110224678912',
+      username: 'akot',
+    }),
+  });
+
+  /**
+   * This portal open with nobody signed in to its old backend, the hub
+   * answering `/me` with `hub`, and `more` routes besides.
+   */
+  const withHub = (
+    hub: () => Partial<Response> & { json?: () => unknown },
+    more: Parameters<typeof stubRoutes>[0] = {},
+  ) =>
+    stubRoutes({
+      [CONFIG_URL]: openConfig,
+      [SPEC_URL]: () => ({ json: async () => FIXTURE }),
+      [ME_URL]: () => ({ json: async () => ({ authenticated: false }) }),
+      [HUB_ME_URL]: hub,
+      ...more,
+    });
+
+  /** Each page under the bar, with the bar's link that is underlined there. */
+  const pages = [
+    ['/quick-start', 'Quick start'],
+    ['/docs', 'OpenAPI Docs'],
+    // A page under the bar that is not in it: nothing is underlined.
+    ['/privacy-policy', null],
+  ] as const;
+
+  it.each(pages)(
+    "shows the dashboard's bar on %s to a visitor signed in to the hub",
+    async (path, current) => {
+      withHub(hubSignedIn);
+      renderAt(path);
+
+      const bar = within(
+        await screen.findByRole('navigation', { name: 'Dashboard' }),
+      );
+      // The dashboard's three links, where the dashboard's bar sends them:
+      // the Prices tab, and these two pages, as routes of this tree.
+      expect(
+        bar.getByRole('link', { name: 'Dashboard' }).getAttribute('href'),
+      ).toBe('/api/dashboard/prices');
+      expect(
+        bar.getByRole('link', { name: 'Quick start' }).getAttribute('href'),
+      ).toBe('/api/prices-api/quick-start');
+      expect(
+        bar.getByRole('link', { name: 'OpenAPI Docs' }).getAttribute('href'),
+      ).toBe('/api/prices-api/docs');
+      for (const name of ['Dashboard', 'Quick start', 'OpenAPI Docs']) {
+        expect(
+          bar.getByRole('link', { name }).getAttribute('aria-current'),
+          name,
+        ).toBe(name === current ? 'page' : null);
+      }
+      expect(bar.getByText('akot')).toBeTruthy();
+      expect(bar.getByRole('button', { name: 'Sign out' })).toBeTruthy();
+
+      // None of the landing bar.
+      expect(screen.queryByRole('navigation', { name: 'Primary' })).toBeNull();
+      for (const name of [/^features$/i, /^faq$/i, /^sign in$/i]) {
+        expect(screen.queryByRole('link', { name }), String(name)).toBeNull();
+      }
+      expect(lastPath).toBe(path);
+    },
+  );
+
+  it.each([
+    ['nobody is signed in to it', hubSignedOut],
+    [
+      'it has no sign-in configured',
+      () => ({
+        ok: false,
+        status: 503,
+        json: async () => ({ error: 'sign_in_not_configured' }),
+      }),
+    ],
+    [
+      'it fails',
+      () => ({ ok: false, status: 500, json: async () => ({}) }),
+    ],
+  ] as const)(
+    'keeps the landing bar on every page under it when the hub says %s',
+    async (_who, hub) => {
+      for (const [path] of pages) {
+        withHub(hub);
+        const { unmount } = renderAt(path);
+
+        const bar = within(
+          await screen.findByRole('navigation', { name: 'Primary' }),
+        );
+        expect(bar.getByRole('link', { name: /^features$/i })).toBeTruthy();
+        expect(bar.getByRole('link', { name: /^quick start$/i })).toBeTruthy();
+        expect(bar.getByRole('link', { name: /^faq$/i })).toBeTruthy();
+        expect(
+          (await bar.findByRole('link', { name: /^sign in$/i })).getAttribute(
+            'href',
+          ),
+        ).toBe('/api/login?from=prices');
+        expect(
+          screen.queryByRole('navigation', { name: 'Dashboard' }),
+          path,
+        ).toBeNull();
+        unmount();
+      }
+    },
+  );
+
+  it("shows the hub's bar, not the old portal's, when both have a session", async () => {
+    withHub(hubSignedIn, {
+      [ME_URL]: () => ({
+        json: async () => ({
+          authenticated: true,
+          user_id: '308994132968210433',
+          username: 'adam',
+        }),
+      }),
+      [KEY_URL]: keyNoKey,
+      [USAGE_URL]: usageNoKey,
+    });
+    renderAt('/quick-start');
+
+    const bar = within(
+      await screen.findByRole('navigation', { name: 'Dashboard' }),
+    );
+    expect(bar.getByText('akot')).toBeTruthy();
+    expect(
+      bar.getByRole('link', { name: 'Dashboard' }).getAttribute('href'),
+    ).toBe('/api/dashboard/prices');
+    expect(screen.queryByText('adam')).toBeNull();
+  });
+
+  it('draws neither bar while the hub is asked, and keeps the bar in its place', async () => {
+    let answer: () => void = () => undefined;
+    const asked = new Promise<void>((resolve) => {
+      answer = resolve;
+    });
+    withHub(() => ({
+      json: async () => {
+        await asked;
+        return {
+          authenticated: true,
+          id: '80351110224678912',
+          username: 'akot',
+        };
+      },
+    }));
+    renderAt('/quick-start');
+
+    // The page itself doesn't wait.
+    await screen.findByRole('heading', {
+      name: /get your first response in under 5 minutes/i,
+    });
+    await screen.findByRole('navigation', { name: 'On this page' });
+    // Neither bar's links, for a visitor who may be either.
+    expect(screen.queryByRole('navigation', { name: 'Primary' })).toBeNull();
+    expect(screen.queryByRole('navigation', { name: 'Dashboard' })).toBeNull();
+    expect(screen.queryByRole('link', { name: /^sign in$/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Sign out' })).toBeNull();
+    // The bar's place, with the mark both bars start with.
+    const place = within(screen.getByTestId('bar-placeholder'));
+    expect(
+      place.getByRole('link', { name: 'SorobanScan' }).getAttribute('href'),
+    ).toBe('https://sorobanscan.com/');
+
+    answer();
+    expect(
+      await screen.findByRole('navigation', { name: 'Dashboard' }),
+    ).toBeTruthy();
+    expect(screen.queryByTestId('bar-placeholder')).toBeNull();
+  });
+
+  it("moves between the pages by the bar's links without asking the hub again", async () => {
+    const fetchMock = withHub(hubSignedIn);
+    renderAt('/quick-start');
+
+    const bar = within(
+      await screen.findByRole('navigation', { name: 'Dashboard' }),
+    );
+    fireEvent.click(bar.getByRole('link', { name: 'OpenAPI Docs' }));
+
+    await waitFor(() => expect(lastPath).toBe('/docs'));
+    const after = within(screen.getByRole('navigation', { name: 'Dashboard' }));
+    expect(
+      after
+        .getByRole('link', { name: 'OpenAPI Docs' })
+        .getAttribute('aria-current'),
+    ).toBe('page');
+    expect(screen.queryByTestId('bar-placeholder')).toBeNull();
+    expect(
+      fetchMock.mock.calls.filter(([url]) => url === HUB_ME_URL),
+    ).toHaveLength(1);
+  });
+
+  it('asks the hub nothing on the landing page, whose bar is its own', async () => {
+    const fetchMock = withHub(hubSignedIn);
+    renderAt('/');
+
+    await screen.findByRole('navigation', { name: 'Primary' });
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => url === ME_URL)).toBe(true),
+    );
+    expect(fetchMock.mock.calls.some(([url]) => url === HUB_ME_URL)).toBe(
+      false,
+    );
+  });
+
+  describe('Sign out', () => {
+    beforeEach(() => {
+      // jsdom can't leave the document; the page's way out is recorded. The
+      // reference reads the address's `hash` as it opens.
+      vi.stubGlobal('location', { replace, assign, hash: '' });
+    });
+
+    it('posts to the hub, as the dashboard does, then goes to the hub', async () => {
+      const fetchMock = withHub(hubSignedIn, {
+        [HUB_LOGOUT_URL]: () => ({ status: 204 }),
+      });
+      renderAt('/docs');
+
+      fireEvent.click(await screen.findByRole('button', { name: 'Sign out' }));
+
+      await waitFor(() => expect(assign).toHaveBeenCalledWith('/api/'));
+      expect(assign).toHaveBeenCalledTimes(1);
+      const call = fetchMock.mock.calls.find(([url]) => url === HUB_LOGOUT_URL);
+      expect(call?.[1]).toMatchObject({
+        method: 'POST',
+        credentials: 'same-origin',
+      });
+      // Not the old portal's sign-out: the session is the hub's.
+      expect(fetchMock.mock.calls.some(([url]) => url === LOGOUT_URL)).toBe(
+        false,
+      );
+    });
+
+    it('stays on the page and says so when the sign-out fails', async () => {
+      withHub(hubSignedIn, {
+        [HUB_LOGOUT_URL]: () => ({
+          ok: false,
+          status: 500,
+          json: async () => ({ error: 'internal' }),
+        }),
+      });
+      renderAt('/quick-start');
+
+      const button = (await screen.findByRole('button', {
+        name: 'Sign out',
+      })) as HTMLButtonElement;
+      fireEvent.click(button);
+      // Shut while the `POST` is out, so one press is one sign-out.
+      expect(button.disabled).toBe(true);
+
+      const failed = await screen.findByText('Sign-out failed. Try again.');
+      expect(failed.closest('[role="alert"]')).not.toBeNull();
+      expect(assign).not.toHaveBeenCalled();
+      expect(lastPath).toBe('/quick-start');
+      // Open again, for the try the message asks for.
+      expect(button.disabled).toBe(false);
+    });
   });
 });
 

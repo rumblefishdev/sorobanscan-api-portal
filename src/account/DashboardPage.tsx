@@ -5,19 +5,17 @@ import Tab from "@mui/material/Tab";
 import Tabs from "@mui/material/Tabs";
 import Typography from "@mui/material/Typography";
 import { alpha } from "@mui/material/styles";
-import { useState } from "react";
 import { Navigate, useNavigate, useParams } from "react-router";
 
 import { DashboardCard } from "../prices/landing/DashboardPanel";
-import { Callout } from "../prices/landing/LoginCard";
 import { LoginSection } from "../prices/landing/LoginSection";
 import { cardBorder } from "../prices/landing/primitives";
 import { color, font, radius } from "../prices/theme/tokens";
-import { AccountNavbar } from "./AccountNavbar";
+import { AccountNavbar, SignOutFailed } from "./AccountNavbar";
 import { CheckingCard, SessionFailedCard } from "./LoginPage";
 import { PricesTab } from "./prices/PricesTab";
 import { enabledProducts, PRODUCT_NAME, PRODUCTS, type Product } from "./products";
-import { signOut, type Session } from "./session";
+import { useSignOut, type Session } from "./session";
 
 /**
  * `/dashboard` and `/dashboard/<product>`: the Prices portal's dashboard (its `DashboardRoute`)
@@ -33,16 +31,7 @@ export function DashboardPage({ session }: { session: Session }) {
   const navigate = useNavigate();
   const enabled = enabledProducts(import.meta.env.VITE_PRODUCTS);
   const selected = enabled.find((product) => product === named) ?? enabled[0];
-  const [signingOut, setSigningOut] = useState<"idle" | "in_flight" | "failed">("idle");
-
-  // The button is shut while the `POST` is out, so one press is one sign-out. A sign-out that
-  // worked leaves the page, so the button stays shut; one that didn't keeps the dashboard and
-  // says so, since this browser is still signed in.
-  const onSignOut = async () => {
-    if (signingOut === "in_flight") return;
-    setSigningOut("in_flight");
-    if (!(await signOut())) setSigningOut("failed");
-  };
+  const signOut = useSignOut();
 
   const head = (
     <>
@@ -88,8 +77,8 @@ export function DashboardPage({ session }: { session: Session }) {
       {head}
       <AccountNavbar
         username={session.username}
-        onSignOut={() => void onSignOut()}
-        signingOut={signingOut === "in_flight"}
+        onSignOut={signOut.onSignOut}
+        signingOut={signOut.state === "in_flight"}
       />
       <Box
         component="main"
@@ -118,15 +107,8 @@ export function DashboardPage({ session }: { session: Session }) {
         />
         <Container sx={{ position: "relative" }}>
           <Stack spacing={3}>
-            {/* Under the bar whose button it answers; `alert`, so a screen reader says it when
-                it appears. */}
-            {signingOut === "failed" && (
-              <Box role="alert">
-                <Callout variant="error">
-                  <p>Sign-out failed. Try again.</p>
-                </Callout>
-              </Box>
-            )}
+            {/* Under the bar whose button it answers. */}
+            {signOut.state === "failed" && <SignOutFailed />}
             <Stack spacing={1}>
               <Typography variant="h4" component="h1" color="text.primary">
                 Dashboard

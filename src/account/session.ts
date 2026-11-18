@@ -126,3 +126,24 @@ export async function signOut(): Promise<boolean> {
   location.assign(import.meta.env.BASE_URL);
   return true;
 }
+
+/** Where a bar's Sign out is: `in_flight` while its `POST` is out, `failed` when it didn't work. */
+export type SignOutState = "idle" | "in_flight" | "failed";
+
+/**
+ * The hub bar's Sign out, on the dashboard and on the Prices pages it draws that bar over. The
+ * button is shut while the `POST` is out, so one press is one sign-out. A sign-out that worked
+ * leaves the page, so the button stays shut; one that didn't keeps the page and says so, since
+ * this browser is still signed in.
+ */
+export function useSignOut(): { state: SignOutState; onSignOut: () => void } {
+  const [state, setState] = useState<SignOutState>("idle");
+  const onSignOut = () => {
+    if (state === "in_flight") return;
+    setState("in_flight");
+    void signOut().then((left) => {
+      if (!left) setState("failed");
+    });
+  };
+  return { state, onSignOut };
+}

@@ -20,15 +20,27 @@ import {
 import {
   Link as RouterLink,
   Navigate,
+  Outlet,
   Route,
   Routes,
   useLocation,
   useNavigate,
   useNavigationType,
+  useOutletContext,
   useSearchParams,
 } from 'react-router';
 
-import { Navbar, Footer } from '../landing/Chrome';
+import {
+  AccountNavbar,
+  SignOutFailed,
+  type AccountNavbarPage,
+} from '../../account/AccountNavbar';
+import {
+  useSession as useHubSession,
+  useSignOut as useHubSignOut,
+  type Session as HubSession,
+} from '../../account/session';
+import { Navbar, Footer, Wordmark } from '../landing/Chrome';
 import { DiscordIcon } from '../landing/DiscordIcon';
 import {
   Benefits,
@@ -3490,11 +3502,118 @@ function DashboardRoute({ gate }: { gate: Gate }) {
 }
 
 /**
- * `/quick-start` — the guide, reachable from the signed-in bar and from the
+ * Who is signed in to the hub, and its Sign out, for the pages under
+ * {@link PageBar}: a layout route over the three, so the hub is asked once
+ * when the first of them opens and the answer kept while the visitor moves
+ * between them. Asked in each page instead, every click on the bar's own
+ * links would ask again and blank the bar while it waited. The landing page
+ * draws a bar of its own and asks the hub nothing.
+ */
+function HubSessionScope() {
+  const session = useHubSession();
+  const signOut = useHubSignOut();
+  return <Outlet context={{ session, signOut } satisfies HubScope} />;
+}
+
+type HubScope = {
+  session: HubSession;
+  signOut: ReturnType<typeof useHubSignOut>;
+};
+
+/**
+ * The bar over the quick start, the API reference and the privacy policy.
+ *
+ * Signed in to the hub, it is the hub's bar, the dashboard's own component
+ * (`AccountNavbar`): the dashboard's "Quick start" and "OpenAPI Docs" open
+ * these pages, and the bar stays the one they were opened from (akot,
+ * 2026-11-18), Sign out included. Without a hub session (signed out, no
+ * sign-in configured, or the hub unable to say) it is this portal's bar as
+ * before: the signed-in one for a session on Prices' old backend, the
+ * landing's otherwise.
+ *
+ * While the hub is asked, the bar is drawn empty, the wordmark alone: the
+ * dashboard draws no bar until it knows, so neither bar's links flash up for
+ * the wrong visitor, and the bar keeps its place, so the page under it doesn't
+ * move when the answer comes.
+ */
+function PageBar({
+  gate,
+  current,
+}: {
+  gate: Gate;
+  current: Exclude<AccountNavbarPage, 'dashboard'>;
+}) {
+  const { session: hub, signOut } = useOutletContext<HubScope>();
+
+  if (hub.state === 'loading') return <EmptyBar />;
+  if (hub.state === 'signed_in') {
+    return (
+      <>
+        <AccountNavbar
+          username={hub.username}
+          onSignOut={signOut.onSignOut}
+          signingOut={signOut.state === 'in_flight'}
+          current={current}
+        />
+        {/* Under the bar whose button it answers, as on the dashboard. */}
+        {signOut.state === 'failed' && (
+          <Container sx={{ pt: 3 }}>
+            <SignOutFailed />
+          </Container>
+        )}
+      </>
+    );
+  }
+
+  const signedIn = gate.open && gate.authenticated;
+  const username = signedIn
+    ? (gate.session as { state: 'ok'; session: PortalSession }).session.username
+    : undefined;
+  return signedIn ? (
+    <DashboardNavbar
+      username={username}
+      onSignOut={gate.onSignOut}
+      current={current}
+    />
+  ) : (
+    // `inPage={false}`: the bar's three links name sections of the LANDING
+    // page, which none of these is.
+    <Navbar canOfferKey={gate.open} inPage={false} />
+  );
+}
+
+/**
+ * {@link PageBar} while the hub is asked: the bars' frame, height and mark,
+ * with nothing to click but the mark.
+ */
+function EmptyBar() {
+  return (
+    <Box
+      data-testid="bar-placeholder"
+      sx={{
+        position: 'sticky',
+        top: 0,
+        zIndex: 10,
+        backgroundColor: alpha(color.surface.background, 0.85),
+        backdropFilter: 'blur(12px)',
+        borderBottom: cardBorder,
+      }}
+    >
+      <Container>
+        <Stack direction="row" alignItems="center" sx={{ minHeight: 52 }}>
+          <Wordmark />
+        </Stack>
+      </Container>
+    </Box>
+  );
+}
+
+/**
+ * `/quick-start` — the guide, reachable from the signed-in bars and from the
  * landing page's docs cards alike. It needs no session: it is documentation,
  * and a visitor deciding whether to sign in is exactly who should read it.
- * The bar it gets depends on who is looking — the signed-in bar (with "Quick
- * start" underlined) for somebody with a key, the landing bar otherwise.
+ * The bar it gets depends on who is looking ({@link PageBar}), with "Quick
+ * start" underlined in a signed-in one.
  */
 function QuickStartRoute({ gate }: { gate: Gate }) {
   const rateLimit =
@@ -3502,23 +3621,10 @@ function QuickStartRoute({ gate }: { gate: Gate }) {
       ? gate.probe.config.rate_limit_per_second
       : undefined;
   const signedIn = gate.open && gate.authenticated;
-  const username = signedIn
-    ? (gate.session as { state: 'ok'; session: PortalSession }).session.username
-    : undefined;
 
   return (
     <>
-      {signedIn ? (
-        <DashboardNavbar
-          username={username}
-          onSignOut={gate.onSignOut}
-          current="quick-start"
-        />
-      ) : (
-        // `inPage={false}`: this is the quick start, and the bar's three
-        // links name sections of the LANDING page.
-        <Navbar canOfferKey={gate.open} inPage={false} />
-      )}
+      <PageBar gate={gate} current="quick-start" />
       <QuickStart rateLimit={rateLimit} />
       <Footer canOfferKey={signedIn} />
     </>
@@ -3562,21 +3668,10 @@ function PageLoading({ label }: { label: string }) {
  */
 function DocsRoute({ gate }: { gate: Gate }) {
   const signedIn = gate.open && gate.authenticated;
-  const username = signedIn
-    ? (gate.session as { state: 'ok'; session: PortalSession }).session.username
-    : undefined;
 
   return (
     <>
-      {signedIn ? (
-        <DashboardNavbar
-          username={username}
-          onSignOut={gate.onSignOut}
-          current="docs"
-        />
-      ) : (
-        <Navbar canOfferKey={gate.open} inPage={false} />
-      )}
+      <PageBar gate={gate} current="docs" />
       <Suspense fallback={<PageLoading label="Loading the API reference" />}>
         <ApiReference />
       </Suspense>
@@ -3588,21 +3683,10 @@ function DocsRoute({ gate }: { gate: Gate }) {
 /** The privacy policy (task 0303): the same chrome rule as the reference. */
 function PrivacyPolicyRoute({ gate }: { gate: Gate }) {
   const signedIn = gate.open && gate.authenticated;
-  const username = signedIn
-    ? (gate.session as { state: 'ok'; session: PortalSession }).session.username
-    : undefined;
 
   return (
     <>
-      {signedIn ? (
-        <DashboardNavbar
-          username={username}
-          onSignOut={gate.onSignOut}
-          current="privacy-policy"
-        />
-      ) : (
-        <Navbar canOfferKey={gate.open} inPage={false} />
-      )}
+      <PageBar gate={gate} current="privacy-policy" />
       <Suspense fallback={<PageLoading label="Loading the privacy policy" />}>
         <PrivacyPolicy />
       </Suspense>
@@ -3757,12 +3841,18 @@ export function App({ accountPages = 'hub' }: { accountPages?: AccountPages }) {
             )
           }
         />
-        <Route path="/quick-start" element={<QuickStartRoute gate={gate} />} />
-        <Route path="/docs" element={<DocsRoute gate={gate} />} />
-        <Route
-          path="/privacy-policy"
-          element={<PrivacyPolicyRoute gate={gate} />}
-        />
+        {/* The pages under `PageBar`, which the hub's bar links to. */}
+        <Route element={<HubSessionScope />}>
+          <Route
+            path="/quick-start"
+            element={<QuickStartRoute gate={gate} />}
+          />
+          <Route path="/docs" element={<DocsRoute gate={gate} />} />
+          <Route
+            path="/privacy-policy"
+            element={<PrivacyPolicyRoute gate={gate} />}
+          />
+        </Route>
         {/* Anything else is a URL this app never minted. On the shared host
             every extensionless path under `/api/prices-api/` boots this bundle
             (the explorer's routing function rewrites it to
