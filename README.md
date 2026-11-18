@@ -233,8 +233,18 @@ The Prices tab's other settings, optional, in `.env.local` like the sign-in's:
 drawn as the Prices portal's: its theme, login card and dashboard panels. The hub's top bar links
 to them. `/login`'s button goes to the backend's `auth/login`, which comes back to `/dashboard`,
 or to `/login?signin=<reason>` with the refusal in Prices' words. Without the backend's settings
-`/login` says sign-in is not configured. The dashboard has a tab per API, `/api/dashboard/<api>`;
-no tab shows a key or usage yet.
+`/login` says sign-in is not configured. When `/me` fails or doesn't answer in 10 seconds, both
+pages say they could not check the sign-in, with "Try again", rather than treat the visitor as
+signed out. The dashboard has a tab per API, `/api/dashboard/<api>`; an address naming a tab that
+is shut or unknown is replaced by the first open one's.
+
+The Prices tab (`src/account/prices/`) is the Prices portal's dashboard, drawn from its own parts
+(`src/prices/landing/DashboardPanel.tsx`, `src/prices/dashboard/`) and fed by the backend's
+`/api/hub/prices/*`: the key card (masked; Show key and Copy key ask `key/reveal`; Regenerate is
+Prices' typed-phrase dialog over `key/revoke`), Monthly Usage and Rate Limit from `account`. With
+no key, or a revoked one once its cap has passed, the card's "Get API Key" is a form `POST` to
+`auth/issue`; the outcome it comes back with, `?issue=`, is said once in Prices' words and taken
+off the address. The backend's errors are said in words, with their code.
 
 `VITE_PRODUCTS`, a build setting, is the comma list of APIs whose tab is open (`prices` unless it
 names others, `prices,x402` once x402 opens); the other tabs show "Coming soon" and don't open.

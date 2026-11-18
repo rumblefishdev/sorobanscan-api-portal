@@ -10,7 +10,7 @@ import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import { alpha } from "@mui/material/styles";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Navigate, useSearchParams } from "react-router";
+import { Navigate, Link as RouterLink, useSearchParams } from "react-router";
 
 import { DiscordIcon } from "../prices/landing/DiscordIcon";
 import {
@@ -69,16 +69,17 @@ const isRefusal = (value: string | null): value is Refusal =>
  * `useOneShotParams` does: the outcome stays on screen for this visit, and a reload, a bookmark or
  * Back shows no stale banner. `replace`, so the stripped address takes the entry's place.
  *
- * Not stripped while `strip` is false: a signed-in visitor is being sent to the dashboard, and a
- * second navigation, back to this page's own address, would undo that one.
+ * Not stripped for a signed-in visitor with no refusal to show: they are being sent to the
+ * dashboard, and a second navigation, back to this page's own address, would undo that one.
  */
-function useSigninOutcome(strip: boolean): Refusal | null {
+function useSigninOutcome(signedIn: boolean): Refusal | null {
   const [searchParams, setSearchParams] = useSearchParams();
   // Captured once per mount; StrictMode's rehearsal keeps state, so the capture survives it.
   const [outcome] = useState(() => {
     const value = searchParams.get("signin");
     return isRefusal(value) ? value : null;
   });
+  const strip = !signedIn || outcome !== null;
   const present = searchParams.has("signin");
   const stripped = useRef(false);
   useEffect(() => {
@@ -97,9 +98,15 @@ function useSigninOutcome(strip: boolean): Refusal | null {
 }
 
 export function LoginPage({ session }: { session: Session }) {
-  const outcome = useSigninOutcome(session.state !== "signed_in");
+  const outcome = useSigninOutcome(session.state === "signed_in");
 
-  if (session.state === "signed_in") return <Navigate to="/dashboard" replace />;
+  // A signed-in visitor has nothing to do here, unless a round trip has just come back refused.
+  // An issue's, left open past the 10 minutes its two halves last, ends here as a sign-in's
+  // failure, since the hub can no longer tell what it was for; sent on without a word, the visitor
+  // would meet a dashboard that says nothing of the key they asked for.
+  if (session.state === "signed_in" && outcome === null) {
+    return <Navigate to="/dashboard" replace />;
+  }
 
   return (
     <>
@@ -112,11 +119,81 @@ export function LoginPage({ session }: { session: Session }) {
           <CheckingCard />
         ) : session.state === "unconfigured" ? (
           <UnconfiguredCard />
+        ) : session.state === "failed" ? (
+          <SessionFailedCard session={session} />
+        ) : session.state === "signed_in" ? (
+          <StillSignedInCard username={session.username} />
         ) : (
           <SignInCard outcome={outcome} />
         )}
       </LoginSection>
     </>
+  );
+}
+
+/**
+ * `/me` failed, so who is signed in is unknown: Prices' words for it (`SessionFailedCallout` in
+ * `src/prices/app/app.tsx`) and its two ways on, asking again or signing in afresh. Signing in is
+ * a top-level navigation of its own, so it doesn't depend on the request that just failed. The
+ * dashboard shows this card too, rather than sending a visitor who may well be signed in to the
+ * sign-in page.
+ */
+export function SessionFailedCard({
+  session,
+}: {
+  session: Extract<Session, { state: "failed" }>;
+}) {
+  return (
+    <LoginCard title={LOGIN_TITLE} titleComponent="h1" subtitle={LOGIN_SUBTITLE}>
+      <Box role="alert">
+        <Callout variant="error">
+          <p data-testid="session-check-failed">
+            Could not check your sign-in status: <code>{session.reason}</code>
+          </p>
+        </Callout>
+      </Box>
+      <Button
+        type="button"
+        variant="contained"
+        fullWidth
+        onClick={session.retry}
+        sx={{ minHeight: 48 }}
+      >
+        Try again
+      </Button>
+      <DiscordButton href={SIGN_IN_URL}>Sign in with Discord</DiscordButton>
+    </LoginCard>
+  );
+}
+
+/**
+ * A signed-in visitor back from a round trip that was refused (see `LoginPage`): their session is
+ * as it was, and the dashboard is where to ask for a key again.
+ */
+function StillSignedInCard({ username }: { username: string }) {
+  return (
+    <LoginCard
+      title="You are still signed in"
+      titleComponent="h1"
+      subtitle={LOGIN_SUBTITLE}
+    >
+      <Callout variant="neutral">
+        <p data-testid="still-signed-in">
+          That round trip through Discord did not complete, so nothing changed: you are still
+          signed in as <strong>{username}</strong>. If you were getting an API key, ask for it again
+          on your dashboard.
+        </p>
+      </Callout>
+      <Button
+        component={RouterLink}
+        to="/dashboard"
+        variant="contained"
+        fullWidth
+        sx={{ minHeight: 48 }}
+      >
+        Go to your dashboard
+      </Button>
+    </LoginCard>
   );
 }
 

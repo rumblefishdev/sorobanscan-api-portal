@@ -1,9 +1,16 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 /** The hub's backend (the BFF), under the page's own prefix and origin. */
-const HUB = `${import.meta.env.BASE_URL}hub/`;
+export const HUB = `${import.meta.env.BASE_URL}hub/`;
 const ME_URL = `${HUB}me`;
 const LOGOUT_URL = `${HUB}auth/logout`;
+
+/**
+ * How long the page waits for `/me` before it says it couldn't tell. `fetch` has no timeout of
+ * its own, and a backend that accepts and never answers would leave the dashboard on "Checking
+ * whether you are signed in…" for good.
+ */
+export const ME_TIMEOUT_MS = 10_000;
 
 /**
  * Where "Sign in with Discord" goes: the backend sends the browser on to Discord. A plain link,
@@ -17,53 +24,87 @@ export type Session =
   | { state: "signed_out" }
   | { state: "signed_in"; id: string; username: string }
   /** The backend has no Discord settings (503 `sign_in_not_configured`): nobody can sign in. */
-  | { state: "unconfigured" };
+  | { state: "unconfigured" }
+  /**
+   * `/me` failed, didn't answer in {@link ME_TIMEOUT_MS}, or answered what isn't the backend's
+   * answer: who is signed in is unknown. `reason` says which, `retry` asks again.
+   */
+  | { state: "failed"; reason: string; retry: () => void };
+
+type Answer = Exclude<Session, { state: "failed" }> | { state: "failed"; reason: string };
 
 /**
- * The session, asked of `GET hub/me` once, on mount. Only a 200 whose body says
- * `authenticated: true` with an id and a username is signed in, and only a 503
- * `sign_in_not_configured` is unconfigured; every other answer, and none at all, is signed out,
- * so the pages offer sign-in whenever they can't tell.
+ * The session, asked of `GET hub/me` on mount and on `retry`. Only a 200 whose body says
+ * `authenticated: true` with an id and a username is signed in, only one that says
+ * `authenticated: false` is signed out, and only a 503 `sign_in_not_configured` is unconfigured.
+ * Every other answer, and none, is `failed`: a backend that is down or slow must not send a
+ * signed-in visitor to the sign-in page as though they were signed out (the shared sign-in spec,
+ * "Found in review of the local sign-in").
  */
 export function useSession(): Session {
-  const [session, setSession] = useState<Session>({ state: "loading" });
+  const [answer, setAnswer] = useState<Answer>({ state: "loading" });
+  /** Bumped by `retry`: each value is one more ask. */
+  const [asked, setAsked] = useState(0);
+
   useEffect(() => {
+    let live = true;
     const asking = new AbortController();
-    void readSession(asking.signal).then((answer) => {
-      if (!asking.signal.aborted) setSession(answer);
+    // A timer, not `AbortSignal.timeout`: it stops with the ask it belongs to.
+    const deadline = setTimeout(() => asking.abort(), ME_TIMEOUT_MS);
+    void readSession(asking.signal).then((read) => {
+      clearTimeout(deadline);
+      if (live) setAnswer(read);
     });
-    return () => asking.abort();
+    return () => {
+      live = false;
+      clearTimeout(deadline);
+      asking.abort();
+    };
+  }, [asked]);
+
+  const retry = useCallback(() => {
+    setAnswer({ state: "loading" });
+    setAsked((n) => n + 1);
   }, []);
-  return session;
+
+  return answer.state === "failed" ? { ...answer, retry } : answer;
 }
 
-async function readSession(signal: AbortSignal): Promise<Session> {
+async function readSession(signal: AbortSignal): Promise<Answer> {
+  const failed = (reason: string): Answer => ({ state: "failed", reason });
+  // Aborted only by the deadline as far as anyone reads: an unmount's answer is dropped.
+  const late = () => failed(`${ME_URL} did not answer within ${ME_TIMEOUT_MS / 1000} s`);
+  let response: Response;
   try {
-    const response = await fetch(ME_URL, {
+    response = await fetch(ME_URL, {
       credentials: "same-origin",
       headers: { accept: "application/json" },
       signal,
     });
-    if (response.status === 503) {
-      const body: unknown = await response.json();
-      return isRecord(body) && body.error === "sign_in_not_configured"
-        ? { state: "unconfigured" }
-        : { state: "signed_out" };
-    }
-    if (response.status !== 200) return { state: "signed_out" };
-    const body: unknown = await response.json();
-    if (
-      isRecord(body) &&
-      body.authenticated === true &&
-      typeof body.id === "string" &&
-      typeof body.username === "string"
-    ) {
-      return { state: "signed_in", id: body.id, username: body.username };
-    }
-    return { state: "signed_out" };
   } catch {
-    return { state: "signed_out" };
+    return signal.aborted ? late() : failed(`${ME_URL} could not be reached`);
   }
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    // The CDN in front of the backend answers its own page, with 200, for a 403 or 404.
+    return signal.aborted ? late() : failed(`${ME_URL} answered ${response.status}, not JSON`);
+  }
+  if (response.status === 503 && isRecord(body) && body.error === "sign_in_not_configured") {
+    return { state: "unconfigured" };
+  }
+  if (response.status !== 200) return failed(`${ME_URL} answered ${response.status}`);
+  if (isRecord(body) && body.authenticated === false) return { state: "signed_out" };
+  if (
+    isRecord(body) &&
+    body.authenticated === true &&
+    typeof body.id === "string" &&
+    typeof body.username === "string"
+  ) {
+    return { state: "signed_in", id: body.id, username: body.username };
+  }
+  return failed(`${ME_URL} answered 200 without a sign-in status`);
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
