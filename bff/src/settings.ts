@@ -74,10 +74,10 @@ export const missingSettings = (env: Record<string, string | undefined>): string
  * The settings from `env`: `DISCORD_CLIENT_ID`, `DISCORD_CLIENT_SECRET`, `HUB_SESSION_SECRET`
  * (base64 of at least 32 bytes) and `HUB_PUBLIC_ORIGIN`, and the optional `DISCORD_GUILD_ID`
  * (Stellar Developers), `HUB_PRICES_TOKEN_SECRET` (the secret's name in Secrets Manager),
- * `PRICES_HUB_API`, `HUB_X402_TOKEN_SECRET`, `X402_HUB_API`, `HUB_PRODUCTS` (a comma list, `prices`) and `MIN_ACCOUNT_AGE_MINUTES` (5),
- * each production's by default and when empty. Every value present is checked first, so a
- * malformed one throws whether or not the others are set, naming the setting and never repeating
- * a secret. Then `undefined` when one of the four is missing or empty: sign-in is not configured.
+ * `PRICES_HUB_API`, `HUB_X402_TOKEN_SECRET`, `X402_HUB_API`, `HUB_PRODUCTS` (a comma list,
+ * `prices`) and `MIN_ACCOUNT_AGE_MINUTES` (5), each production's by default and when empty. Every
+ * value present is checked first, so a malformed one throws whether or not the others are set,
+ * naming the setting and never repeating a secret. Then `undefined` when one of the four is missing or empty: sign-in is not configured.
  */
 export function readSettings(
   env: Record<string, string | undefined>,
