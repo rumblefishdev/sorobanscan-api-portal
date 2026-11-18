@@ -184,6 +184,11 @@ not asked), a member of Stellar Developers who has cleared screening, and at lea
 for `issue`. The browser lands on `/api/dashboard/prices?issue=<outcome>`: Prices' `issued`,
 `has_key`, `capped`, `too_young` or `failed`, or the hub's `not_member`, `pending_rules`,
 `unknown`, `too_young`, `account_mismatch`, `cancelled` or `failed` (Prices out of reach too).
+The callback has 25 seconds, under CloudFront's 30-second wait for an origin: Discord's three
+steps take at most 4 seconds each, and Prices' `key/issue` gets what they left, never more than
+its own 20. Each refusal is logged as `issue_refused <outcome>` with the account that asked
+(`discord:<id>`, from the browser's half); a `key/issue` that gave no outcome is logged once, as
+`prices_call_failed issue`, with the account, the `jti` and why.
 
 The secret is in AWS Secrets Manager, in `eu-central-1`, as JSON: `{"current": "<base64 of 32
 bytes>"}`, with `"previous"` beside it while it is being changed. The hub signs with `current`;

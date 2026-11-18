@@ -49,8 +49,11 @@ export interface PricesClient {
   reveal(caller: Caller): Promise<PricesAnswer>;
   /** Revokes the key: `POST key/revoke`. */
   revoke(caller: Caller): Promise<PricesAnswer>;
-  /** Asks for a key: `POST key/issue`. Only after the gates, from the issue's callback. */
-  issue(caller: Caller): Promise<PricesAnswer<IssueBody>>;
+  /**
+   * Asks for a key: `POST key/issue`. Only after the gates, from the issue's callback, which may
+   * give it less than {@link PRICES_TIMEOUT_MS}: `timeoutMs`, what the callback has left.
+   */
+  issue(caller: Caller, timeoutMs?: number): Promise<PricesAnswer<IssueBody>>;
 }
 
 export interface PricesClientOptions {
@@ -58,8 +61,9 @@ export interface PricesClientOptions {
   api: string;
   /**
    * The secret the tokens are signed with (`productSecret`). When it rejects, the call answers
-   * `product_not_configured` and logs nothing: the reader logged why. When it hasn't resolved by
-   * the call's deadline, the same answer, logged here.
+   * `product_not_configured` and logs nothing, the reader logged why, but for an issue, which is
+   * logged with its account. When it hasn't resolved by the call's deadline, the same answer,
+   * logged here.
    */
   signer: () => Promise<Buffer>;
   fetchImpl?: typeof globalThis.fetch;
@@ -76,6 +80,12 @@ interface Call {
   event?: (body: Record<string, unknown>) => string;
   /** Whether a successful answer says what the call needs it to. */
   holds?: (body: Record<string, unknown>) => boolean;
+  /**
+   * A key event: its failure is logged with the account whatever the cause, even a secret whose
+   * reader has said why, so that every failed issue is on record by account. Logged here only,
+   * once: the callback adds no line of its own.
+   */
+  keyEvent?: true;
 }
 
 const CALLS = {
@@ -98,8 +108,12 @@ const CALLS = {
     act: "issue",
     event: (body) => `prices_key_issue ${String(body.outcome)}`,
     holds: (body) => (ISSUE_OUTCOMES as readonly unknown[]).includes(body.outcome),
+    keyEvent: true,
   },
 } as const satisfies Record<string, Call>;
+
+/** `ms` in seconds, as a log line says it: `20`, `7.5`. */
+const seconds = (ms: number) => String(Math.round(ms / 100) / 10);
 
 const NOT_CONFIGURED = { ok: false, status: 503, error: "product_not_configured" } as const;
 const BUSY = { ok: false, status: 503, error: "prices_busy" } as const;
@@ -179,23 +193,24 @@ export function pricesClient({
 }: PricesClientOptions): PricesClient {
   async function call(
     caller: Caller,
-    { method, path, act, event, holds }: Call,
+    { method, path, act, event, holds, keyEvent }: Call,
+    timeoutMs = PRICES_TIMEOUT_MS,
   ): Promise<PricesAnswer> {
     // One deadline for the whole call, from here: the secret's read can take seconds of its own.
+    const limit = Math.min(timeoutMs, PRICES_TIMEOUT_MS);
     const controller = new AbortController();
-    const deadline = setTimeout(() => controller.abort(), PRICES_TIMEOUT_MS);
+    const deadline = setTimeout(() => controller.abort(), limit);
     try {
       let secret: Buffer;
       try {
         secret = await beforeAbort(signer(), controller.signal);
       } catch {
-        // A read that failed was logged by the reader; one still under way has said nothing yet.
-        if (controller.signal.aborted) {
-          console.warn(
-            `prices_call_failed ${act} discord:${caller.discordId} ` +
-              `(the secret was not read in ${PRICES_TIMEOUT_MS / 1000} s)`,
-          );
-        }
+        // A read that failed was logged by the reader, without the account a key event needs;
+        // one still under way has said nothing yet.
+        const why = controller.signal.aborted
+          ? `the secret was not read in ${seconds(limit)} s`
+          : keyEvent && "the secret could not be read";
+        if (why) console.warn(`prices_call_failed ${act} discord:${caller.discordId} (${why})`);
         return NOT_CONFIGURED;
       }
 
@@ -231,7 +246,7 @@ export function pricesClient({
           return failed(
             UNAVAILABLE,
             controller.signal.aborted
-              ? `Prices did not answer in ${PRICES_TIMEOUT_MS / 1000} s`
+              ? `Prices did not answer in ${seconds(limit)} s`
               : `could not reach Prices: ${error instanceof Error ? error.name : "a failure"}`,
           );
         }
@@ -280,6 +295,7 @@ export function pricesClient({
     account: (caller) => call(caller, CALLS.account),
     reveal: (caller) => call(caller, CALLS.reveal),
     revoke: (caller) => call(caller, CALLS.revoke),
-    issue: (caller) => call(caller, CALLS.issue) as Promise<PricesAnswer<IssueBody>>,
+    issue: (caller, timeoutMs) =>
+      call(caller, CALLS.issue, timeoutMs) as Promise<PricesAnswer<IssueBody>>,
   };
 }
