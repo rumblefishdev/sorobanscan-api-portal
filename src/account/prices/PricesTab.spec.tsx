@@ -632,6 +632,27 @@ describe("the Prices tab", () => {
     expect(requests(fetchMock).filter((r) => r.endsWith("/account"))).toHaveLength(2);
   });
 
+  // The key was made before the browser came back: an account read that fails after it says only
+  // that the key can't be shown yet, never that the issue failed.
+  it("keeps saying the key was issued when the account can't be read, and shows it on Try again", async () => {
+    stubHub({
+      account: [() => answer(502, { error: "prices_unavailable" }), () => answer(200, ACTIVE)],
+    });
+    renderAt("/api/dashboard/prices?issue=issued");
+    const failed = await screen.findByTestId("account-failed");
+    expect(failed.textContent).toBe(
+      "Could not load your Prices API key: the Prices API did not answer — try again in a moment (prices_unavailable).",
+    );
+    expect(screen.getByTestId("issue-issued").textContent).toMatch(
+      /^Welcome! Your API key has been generated\./,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    const key = await card("Your API Key is ready");
+    expect(within(key).getByTestId("issue-issued")).toBeTruthy();
+    expect(within(key).getByTestId("api-key").textContent).toBe(MASK);
+  });
+
   it("shows no banner for an outcome it doesn't know, and takes it off the address", async () => {
     stubHub({ account: () => answer(200, NO_KEY) });
     renderAt("/api/dashboard/prices?issue=bogus");
