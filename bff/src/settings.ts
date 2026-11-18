@@ -77,7 +77,8 @@ export const missingSettings = (env: Record<string, string | undefined>): string
  * `PRICES_HUB_API`, `HUB_X402_TOKEN_SECRET`, `X402_HUB_API`, `HUB_PRODUCTS` (a comma list,
  * `prices`) and `MIN_ACCOUNT_AGE_MINUTES` (5), each production's by default and when empty. Every
  * value present is checked first, so a malformed one throws whether or not the others are set,
- * naming the setting and never repeating a secret. Then `undefined` when one of the four is missing or empty: sign-in is not configured.
+ * naming the setting and never repeating a secret. Then `undefined` when one of the four is
+ * missing or empty: sign-in is not configured.
  */
 export function readSettings(
   env: Record<string, string | undefined>,

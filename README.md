@@ -145,12 +145,14 @@ everything else runs as before. With only one or two of them it answers the same
 warns at start, naming the ones missing. A malformed `HUB_SESSION_SECRET`, `DISCORD_GUILD_ID` or
 `HUB_PUBLIC_ORIGIN`, or a malformed setting of either product's below (`HUB_PRODUCTS`, the secrets'
 names, the APIs' addresses, `MIN_ACCOUNT_AGE_MINUTES`; x402's too, with x402 off), stops the
-server from starting, naming the setting, whether or not the others are set; when the server restarts itself (after a
-change to the config or an `.env` file), Vite logs "server restart failed" and keeps the old
-server running.
+server from starting, naming the setting, whether or not the others are set; when the server
+restarts itself (after a change to the config or an `.env` file), Vite logs "server restart
+failed" and keeps the old server running.
 
 The x402 tab is opt-in: `HUB_PRODUCTS` is `prices` unless set, and `HUB_PRODUCTS=prices,x402` turns
-on x402's routes (below). Without it `/api/hub/x402/*` answers 400 `unknown_product`.
+on x402's routes (below). Without it the three routes with a session (`account`, `key/reveal` and
+`key/revoke`) answer 400 `unknown_product`, without a session they answer 401 `not_signed_in`, and
+any other path under `/api/hub/x402/` 400 `unknown_route`.
 
 Only the dev and preview servers run it: deploying it (in AWS, beside the explorer's CloudFront,
 the cutover's step 1) is a later plan.
@@ -207,32 +209,6 @@ logs it. A read that fails (no credentials, no access, a malformed secret, no an
 seconds) is logged once as `product_secret_unavailable`, with the reason, and is tried again after
 10 seconds.
 
-### The token to x402
-
-The x402 tab (turned on by `HUB_PRODUCTS=prices,x402`) is the same contract, with `product: x402`
-in its calls (`bff/src/products/client.ts`): `GET /api/hub/x402/account`,
-`POST /api/hub/x402/key/reveal`, `POST /api/hub/x402/key/revoke` and, from "Get API Key" with
-`product=x402`, `key/issue`, answered and logged as Prices' are, under `x402_busy`,
-`x402_unavailable` and the `x402_` log events. The browser lands on
-`/api/dashboard/x402?issue=<outcome>`. A token for x402 is signed under x402's own audience and
-context, so it is no good to Prices, nor Prices' to x402. Its settings, beside Prices':
-
-- `HUB_X402_TOKEN_SECRET`: the secret's name in Secrets Manager, `sorobanscan-hub/production/x402-token`
-  unless set; the name, not the value, as `HUB_PRICES_TOKEN_SECRET` is.
-- `X402_HUB_API`: x402's hub contract, `https://x402-portal.sorobanscan.com/api/hub/v1` unless
-  set; https with no trailing slash (http on this machine only), as `PRICES_HUB_API` is.
-
-The secret is made as Prices' is, once, in `eu-central-1`:
-
-```sh
-aws secretsmanager create-secret --name sorobanscan-hub/production/x402-token --region eu-central-1 \
-  --secret-string "{\"current\":\"$(openssl rand -base64 32)\"}"
-```
-
-x402's backend reads a copy of that value from a file on its own server, not from AWS. One
-product's secret out of reach fails that product's calls alone (503 `product_not_configured`);
-the others answer.
-
 Changing the value is Prices' procedure, with its commands: "Changing the value without a gap" in
 `docs/runbooks/hub-contract.md` of `rumblefishdev/stellar-prices-api`. Prices keeps the value it
 read for an execution environment's life, the hub for 5 minutes, so every Prices environment must
@@ -270,6 +246,43 @@ The Prices tab's other settings, optional, in `.env.local` like the sign-in's:
   backend has no routes for stops the server.
 - `MIN_ACCOUNT_AGE_MINUTES`: how old a Discord account must be, in minutes, to be issued a key; 5
   unless set.
+
+### The token to x402
+
+The x402 tab (turned on by `HUB_PRODUCTS=prices,x402`) is the same contract, with `product: x402`
+in its calls (`bff/src/products/client.ts`): `GET /api/hub/x402/account`,
+`POST /api/hub/x402/key/reveal`, `POST /api/hub/x402/key/revoke` and, from "Get API Key" with
+`product=x402`, `key/issue`, answered and logged as Prices' are, under `x402_busy`,
+`x402_unavailable` and the `x402_` log events. The browser lands on
+`/api/dashboard/x402?issue=<outcome>`. A token for x402 is signed under x402's own audience and
+context, so it is no good to Prices, nor Prices' to x402. Its settings, beside Prices':
+
+- `HUB_X402_TOKEN_SECRET`: the secret's name in Secrets Manager,
+  `sorobanscan-hub/production/x402-token` unless set; the name, not the value, as
+  `HUB_PRICES_TOKEN_SECRET` is.
+- `X402_HUB_API`: x402's hub contract, `https://x402-portal.sorobanscan.com/api/hub/v1` unless
+  set; https with no trailing slash (http on this machine only), as `PRICES_HUB_API` is.
+
+The secret is made as Prices' is, once, in `eu-central-1`:
+
+```sh
+aws secretsmanager create-secret --name sorobanscan-hub/production/x402-token \
+  --region eu-central-1 --secret-string "{\"current\":\"$(openssl rand -base64 32)\"}"
+```
+
+x402's backend reads a copy of that value from a file on its own server, not from AWS. One
+product's secret out of reach fails that product's calls alone (503 `product_not_configured`);
+the others answer.
+
+Changing the value is Prices' procedure, the same four steps, on
+`sorobanscan-hub/production/x402-token`: (1) put the new value as `previous`; (2) make x402's
+backend read both; (3) swap them, so the new value is `current` and the old one `previous`, and
+the hub signs with the new one within 5 minutes; (4) after at least 10 minutes, drop the old one
+and read again. Where Prices' steps recycle its Lambda, an admin copies the stored JSON to the
+credential on x402's server and restarts its backend; those steps are in `docs/runbook.md`,
+"The portal's backend", of `rumblefishdev/stellar-x402`. Writing the new value as `current` in one
+step leaves x402's backend refusing every hub call until it has the new value: the tab gets 502
+`invalid_token`.
 
 ### Trying the x402 tab locally
 
