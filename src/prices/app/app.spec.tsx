@@ -887,6 +887,20 @@ describe("the hub's bar on the pages it links to", () => {
     },
   );
 
+  it.each(pages)(
+    "offers the hub's Dashboard in the footer on %s too, where the bar's goes",
+    async (path) => {
+      withHub(hubSignedIn);
+      renderAt(path);
+
+      await screen.findByRole('navigation', { name: 'Dashboard' });
+      const footer = within(screen.getByRole('navigation', { name: 'Footer' }));
+      expect(
+        footer.getByRole('link', { name: 'Dashboard' }).getAttribute('href'),
+      ).toBe('/api/dashboard/prices');
+    },
+  );
+
   it.each([
     ['nobody is signed in to it', hubSignedOut],
     [
@@ -923,6 +937,11 @@ describe("the hub's bar on the pages it links to", () => {
           screen.queryByRole('navigation', { name: 'Dashboard' }),
           path,
         ).toBeNull();
+        // Nor a dashboard in the footer: nobody is signed in anywhere.
+        const footer = within(
+          screen.getByRole('navigation', { name: 'Footer' }),
+        );
+        expect(footer.queryByRole('link', { name: 'Dashboard' }), path).toBeNull();
         unmount();
       }
     },
@@ -980,16 +999,55 @@ describe("the hub's bar on the pages it links to", () => {
     expect(screen.queryByRole('link', { name: /^sign in$/i })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Sign out' })).toBeNull();
     // The bar's place, with the mark both bars start with.
-    const place = within(screen.getByTestId('bar-placeholder'));
+    const placeholder = screen.getByTestId('bar-placeholder');
     expect(
-      place.getByRole('link', { name: 'SorobanScan' }).getAttribute('href'),
+      within(placeholder)
+        .getByRole('link', { name: 'SorobanScan' })
+        .getAttribute('href'),
     ).toBe('https://sorobanscan.com/');
+    /** A bar's row, inside its frame and `Container`. */
+    const row = (bar: HTMLElement) =>
+      bar.querySelector(':scope > div > div') as HTMLElement;
+    /**
+     * The `min-height` an element's style rules give it in a window `width`
+     * px wide, by MUI's `min-width` breakpoints (`xs` is `min-width: 0px`).
+     * jsdom's window is a fixed 1024 px, so `getComputedStyle` can't say what
+     * a phone gets.
+     */
+    const minHeightAt = (element: HTMLElement, width: number) => {
+      let value = '';
+      const visit = (rules: CSSRuleList) => {
+        for (const rule of Array.from(rules)) {
+          if (rule instanceof CSSMediaRule) {
+            const min = /min-width:\s*(\d+)px/.exec(rule.media.mediaText);
+            if (min && Number(min[1]) <= width) visit(rule.cssRules);
+          } else if (
+            rule instanceof CSSStyleRule &&
+            element.matches(rule.selectorText) &&
+            rule.style.minHeight
+          ) {
+            value = rule.style.minHeight;
+          }
+        }
+      };
+      for (const sheet of Array.from(document.styleSheets)) {
+        visit(sheet.cssRules);
+      }
+      return value;
+    };
+    const heights = (bar: HTMLElement) => ({
+      phone: minHeightAt(row(bar), 375),
+      wide: minHeightAt(row(bar), 1024),
+    });
+    const place = heights(placeholder);
 
     answer();
-    expect(
-      await screen.findByRole('navigation', { name: 'Dashboard' }),
-    ).toBeTruthy();
+    const nav = await screen.findByRole('navigation', { name: 'Dashboard' });
     expect(screen.queryByTestId('bar-placeholder')).toBeNull();
+    // As tall as the hub's bar at each width: two rows on a phone, one from
+    // `sm`.
+    expect(place).toEqual({ phone: '84px', wide: '52px' });
+    expect(heights(nav)).toEqual(place);
   });
 
   it("moves between the pages by the bar's links without asking the hub again", async () => {

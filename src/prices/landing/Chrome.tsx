@@ -17,6 +17,7 @@ import {
   DASHBOARD_ROUTE,
   DOCS_ROUTE,
   EXPLORER,
+  HUB_DASHBOARD,
   HUB_LOGIN,
   LANDING,
   PRIVACY_POLICY_ROUTE,
@@ -387,7 +388,19 @@ declare global {
   }
 }
 
-export function Footer({ canOfferKey }: { canOfferKey: boolean }) {
+export function Footer({
+  canOfferKey,
+  hubDashboard = false,
+}: {
+  canOfferKey: boolean;
+  /**
+   * Signed in to the hub: "Dashboard" is the hub's Prices tab, where the hub's
+   * bar over the page sends it too (`PageBar` in `app/app.tsx`), whatever this
+   * portal's own backend says. A page of another tree, so a plain `href`
+   * (`links.ts`).
+   */
+  hubDashboard?: boolean;
+}) {
   const links: {
     label: string;
     href?: string;
@@ -406,7 +419,11 @@ export function Footer({ canOfferKey }: { canOfferKey: boolean }) {
     // domain root — `/dashboard` rather than `/api/prices-api/dashboard`, which is
     // a path the deployment does not serve. Every other in-app destination on
     // the page already goes through `RouterLink`; this one did not.
-    ...(canOfferKey ? [{ label: 'Dashboard', to: DASHBOARD_ROUTE }] : []),
+    ...(hubDashboard
+      ? [{ label: 'Dashboard', href: HUB_DASHBOARD }]
+      : canOfferKey
+        ? [{ label: 'Dashboard', to: DASHBOARD_ROUTE }]
+        : []),
     { label: 'Contact', href: RUMBLEFISH_CONTACT },
     { label: 'Privacy policy', to: PRIVACY_POLICY_ROUTE },
     // The only way to withdraw consent once given, so it sits on every page.

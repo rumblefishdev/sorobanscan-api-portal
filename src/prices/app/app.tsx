@@ -31,6 +31,7 @@ import {
 } from 'react-router';
 
 import {
+  ACCOUNT_NAVBAR_HEIGHT,
   AccountNavbar,
   SignOutFailed,
   type AccountNavbarPage,
@@ -3583,8 +3584,10 @@ function PageBar({
 }
 
 /**
- * {@link PageBar} while the hub is asked: the bars' frame, height and mark,
- * with nothing to click but the mark.
+ * {@link PageBar} while the hub is asked: the bars' frame and mark, with
+ * nothing to click but the mark, as tall as the hub's bar at each width. On a
+ * phone that bar is two rows, the mark on the first, so the place is too and
+ * the mark sits where the bar will put it.
  */
 function EmptyBar() {
   return (
@@ -3600,11 +3603,32 @@ function EmptyBar() {
       }}
     >
       <Container>
-        <Stack direction="row" alignItems="center" sx={{ minHeight: 52 }}>
+        <Stack
+          direction="row"
+          sx={{
+            minHeight: ACCOUNT_NAVBAR_HEIGHT,
+            alignItems: { xs: 'flex-start', sm: 'center' },
+          }}
+        >
           <Wordmark />
         </Stack>
       </Container>
     </Box>
+  );
+}
+
+/**
+ * The footer under the pages {@link PageBar} is over: its "Dashboard" follows
+ * the bar's, the hub's Prices tab for a visitor signed in to the hub, this
+ * portal's dashboard for a session on its old backend, none otherwise.
+ */
+function PageFooter({ gate }: { gate: Gate }) {
+  const { session: hub } = useOutletContext<HubScope>();
+  return (
+    <Footer
+      canOfferKey={gate.open && gate.authenticated}
+      hubDashboard={hub.state === 'signed_in'}
+    />
   );
 }
 
@@ -3620,13 +3644,12 @@ function QuickStartRoute({ gate }: { gate: Gate }) {
     gate.probe.state === 'ok'
       ? gate.probe.config.rate_limit_per_second
       : undefined;
-  const signedIn = gate.open && gate.authenticated;
 
   return (
     <>
       <PageBar gate={gate} current="quick-start" />
       <QuickStart rateLimit={rateLimit} />
-      <Footer canOfferKey={signedIn} />
+      <PageFooter gate={gate} />
     </>
   );
 }
@@ -3667,30 +3690,26 @@ function PageLoading({ label }: { label: string }) {
  * visit that starts here.
  */
 function DocsRoute({ gate }: { gate: Gate }) {
-  const signedIn = gate.open && gate.authenticated;
-
   return (
     <>
       <PageBar gate={gate} current="docs" />
       <Suspense fallback={<PageLoading label="Loading the API reference" />}>
         <ApiReference />
       </Suspense>
-      <Footer canOfferKey={signedIn} />
+      <PageFooter gate={gate} />
     </>
   );
 }
 
 /** The privacy policy (task 0303): the same chrome rule as the reference. */
 function PrivacyPolicyRoute({ gate }: { gate: Gate }) {
-  const signedIn = gate.open && gate.authenticated;
-
   return (
     <>
       <PageBar gate={gate} current="privacy-policy" />
       <Suspense fallback={<PageLoading label="Loading the privacy policy" />}>
         <PrivacyPolicy />
       </Suspense>
-      <Footer canOfferKey={signedIn} />
+      <PageFooter gate={gate} />
     </>
   );
 }
