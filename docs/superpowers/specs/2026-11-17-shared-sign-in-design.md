@@ -355,3 +355,48 @@ copy) is added before x402's tab opens.
     Prices key; a revoke holds back a new key until the next calendar month (UTC), so revoke is
     tried with a second Discord account or last.
 
+## x402 joins (the cutover's step 5; design approved by akot, 2026-11-18)
+
+x402's keys are issued from the hub exactly as Prices' are. Its backend's half is stellar-x402's
+task 0106 ("The hub's contract", decisions 23-33 there); this is the hub's half.
+
+**Approach.** Prices' contract carried over one for one. Considered and dropped: a contract of
+x402's own shape (a second client and a second tab's logic here for no gain), and x402 keeping
+its own sign-in beside the hub's (two ways in, for a sign-in nobody uses).
+
+17. **x402's backend implements the same four calls**, at
+    `https://x402-portal.sorobanscan.com/api/hub/v1` (`X402_HUB_API`, production's by default),
+    with the same answers and error codes as Prices (stellar-prices-api,
+    `docs/runbooks/hub-contract.md`), apart from: no `503 hub_unconfigured` (its secret is read
+    at start), `details` is `{"showable": bool}` and holds no use (stellar-x402 0107), and
+    `reveal` answers `409 key_not_viewable` for a key it holds no copy of.
+18. **A token for x402 differs from one for Prices in `aud` (`x402`) and in the MAC's context
+    (`sorobanscan-hub/x402-token/v1`)**, so neither product accepts the other's. The signer takes
+    the product; the format, the claims and their order stay decision 15's. A test vector of
+    x402's own is pinned on both sides (`bff/test/token.test.ts` here, `apps/portal` there),
+    with decision 15's secret and claims but `"aud":"x402"`.
+19. **A secret of its own, `sorobanscan-hub/production/x402-token`**, in the same JSON as
+    decision 12. The BFF reads it as it reads Prices' (locally through `AWS_PROFILE`; its role's grant
+    comes with the BFF's own deploy, which this repo doesn't hold yet); x402's backend
+    reads a copy an admin puts in a file on its server (akot, 2026-11-18), and holds no AWS
+    credentials. Changing it: Prices' four steps, with a restart of x402's backend where Prices
+    recycles its Lambda.
+20. **A new x402 key after a revoke waits for the next calendar month (UTC)**, as Prices' does
+    (akot, 2026-11-18); the tab's Regenerate revokes and issues nothing.
+21. **One client for every product** (`bff/src/products/`), taking the product's name: its own
+    failures are `<product>_busy` and `<product>_unavailable`, so Prices' codes stay as they are.
+22. **`x402` is opt-in on both sides of the build**: `HUB_PRODUCTS` for the BFF (default
+    `prices`), `VITE_PRODUCTS` for the page (decision 5). Production stays on Prices alone until
+    x402 opens; the tab is tried from a local hub on production's x402 backend, as decision 11
+    has it for Prices.
+23. **The x402 tab** (`src/account/x402/`), from the Prices tab's parts: the key's card, Show and
+    Copy (absent when `showable` is false), "Get API Key", Regenerate; no use; two tiles, "pubnet
+    needs the key" and "testnet needs none".
+24. **The privacy policy gains x402's paragraph** (the registry's row naming the Discord id, the
+    key's sealed copy, deleted on revoke), shown when `VITE_PRODUCTS` names `x402`.
+25. **Cloudflare:** Browser Integrity Check is off for `x402-portal.sorobanscan.com`
+    (`soroban-infrastructure`), since the BFF is a server and would be answered 1010; decision
+    16's points hold for this host too.
+
+Not here: the hub checking membership in the background (a pull request of its own).
+
