@@ -324,3 +324,20 @@ copy) is added before x402's tab opens.
   some browsers: the moved Prices pages' `?from=prices` redirects (not built yet) are the way
   back, and step 1 is verified through `/api/hub/me`, not the landing page.
 
+## Stage 2 decisions (akot, 2026-11-18)
+
+11. **A local hub works on production's Prices.** `pnpm dev` shows the Prices tab with the real
+    key and usage from Prices' production backend, as the moved Prices pages already do through
+    the dev proxy. No Prices backend runs locally.
+12. **The token key is in AWS KMS from stage 2.** An asymmetric ECC_NIST_P256 key signs the BFF's
+    ES256 tokens; production Prices trusts only its public key. The local BFF signs through the
+    developer's AWS credentials (`AWS_PROFILE`), so only people who can use that key in AWS can
+    mint a token, the same people who already administer Prices' keys. No development key is
+    ever trusted by production.
+13. **Prices' contract goes to production in stage 2**, beside its existing portal routes, through
+    Prices' own task, branch, pull request and deploy. Nothing but the BFF calls it, so today's
+    portal users see no change.
+14. **Testing on real data:** issuing and revoking in the Prices tab act on the tester's real
+    Prices key; a revoke holds back a new key until the next calendar month (UTC), so revoke is
+    tried with a second Discord account or last.
+
