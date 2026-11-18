@@ -801,7 +801,36 @@ describe("the Prices client", () => {
       });
     }
     expect(prices.calls).toEqual([]);
-    expect(logged()).toBe("");
+    // The reader has said why. A failed issue is a key event, so it is logged with its account;
+    // the other calls aren't.
+    expect(logged()).toBe(
+      `prices_call_failed issue discord:${ACCOUNT_ID} (the secret could not be read)`,
+    );
+  });
+
+  it("gives an issue no more time than its caller has left, and never more than 20 s", async () => {
+    vi.useFakeTimers();
+    const { client: issuing, prices } = client([() => "hang"]);
+    let settled = false;
+    const answered = issuing.issue(CALLER, 7_500).finally(() => (settled = true));
+    await vi.advanceTimersByTimeAsync(7_500 - 1);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await answered).toEqual({ ok: false, status: 502, error: "prices_unavailable" });
+    const [call] = prices.accepted;
+    expect(call?.signal?.aborted).toBe(true);
+    expect(logged()).toBe(failure("issue", call, "Prices did not answer in 7.5 s"));
+
+    vi.clearAllMocks();
+    const { client: generous } = client([() => "hang"]);
+    let done = false;
+    const capped = generous.issue(CALLER, 60_000).finally(() => (done = true));
+    await vi.advanceTimersByTimeAsync(PRICES_TIMEOUT_MS - 1);
+    expect(done).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect((await capped).ok).toBe(false);
+    expect(logged()).toMatch(/\(Prices did not answer in 20 s\)$/);
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it("puts each call's path after the API's base, on its own clock", async () => {

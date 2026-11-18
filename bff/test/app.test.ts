@@ -1,6 +1,12 @@
 import { createHash } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
-import { createHub, PENDING_TTL_SECONDS, SESSION_TTL_SECONDS, type HubDeps } from "../src/app.ts";
+import {
+  createHub,
+  ISSUE_CALLBACK_TIMEOUT_MS,
+  PENDING_TTL_SECONDS,
+  SESSION_TTL_SECONDS,
+  type HubDeps,
+} from "../src/app.ts";
 import { createdAt, httpDiscord } from "../src/discord.ts";
 import { missingSettings, readSettings, type HubSettings } from "../src/settings.ts";
 import { tokens } from "../src/tokens.ts";
@@ -191,6 +197,7 @@ beforeEach(() => {
   );
 });
 afterEach(() => {
+  vi.useRealTimers();
   vi.restoreAllMocks();
   const answered = statuses.splice(0);
   expect(answered.filter((status) => status === 403 || status === 404)).toEqual([]);
@@ -1107,21 +1114,29 @@ describe("Get API Key", () => {
     }
   });
 
-  it("lands on failed when Prices gives no outcome, naming why in the log", async () => {
+  // One line for one failed issue, saying it failed and why, with the token's jti: the client's.
+  it("lands on failed when Prices gives no outcome, logging the failure once", async () => {
     const cases: [string, (() => Answer)[], string][] = [
-      ["Prices' own error", [envelope(500, "internal_error")], "internal_error"],
-      ["a refused token", [envelope(401, "invalid_token")], "invalid_token"],
-      ["a gateway's 429", [() => new Response("", { status: 429 })], "prices_busy"],
-      ["an HTML 502", [() => new Response("<html>", { status: 502 })], "prices_unavailable"],
-      ["an unknown outcome", [() => Response.json({ outcome: "maybe" })], "prices_unavailable"],
+      ["Prices' own error", [envelope(500, "internal_error")], "Prices answered 500 internal_error"],
+      ["a refused token", [envelope(401, "invalid_token")], "Prices answered 401 invalid_token"],
       [
-        "a 503 twice",
-        [envelope(503, "hub_unconfigured"), envelope(503, "hub_unconfigured")],
-        "hub_unconfigured",
+        "a gateway's 429",
+        [() => new Response("", { status: 429 })],
+        "Prices answered 429 without its error envelope",
       ],
-      ["no answer", [() => new TypeError("fetch failed")], "prices_unavailable"],
+      [
+        "an HTML 502",
+        [() => new Response("<html>", { status: 502 })],
+        "Prices answered 502 without its error envelope",
+      ],
+      [
+        "an unknown outcome",
+        [() => Response.json({ outcome: "maybe" })],
+        "Prices answered 200 without a known outcome",
+      ],
+      ["no answer", [() => new TypeError("fetch failed")], "could not reach Prices: TypeError"],
     ];
-    for (const [what, answers, error] of cases) {
+    for (const [what, answers, why] of cases) {
       vi.clearAllMocks();
       const hub = startHub();
       hub.prices.answer("/key/issue", ...answers);
@@ -1129,21 +1144,108 @@ describe("Get API Key", () => {
       await hub.signIn(browser);
       const back = await hub.issue(browser);
       expectLanded(back, "failed");
-      expect(logged(), what).toContain(
-        `issue_refused failed discord:${ACCOUNT_ID} (Prices gave no outcome: ${error})`,
-      );
+      const [call] = hub.prices.accepted;
+      expect(logged().split("\n"), what).toEqual([
+        `signed_in discord:${ACCOUNT_ID}`,
+        `prices_call_failed issue discord:${ACCOUNT_ID} jti:${call?.claims.jti} (${why})`,
+      ]);
     }
 
-    // The secret out of reach: Prices is never asked.
+    // A 503 twice: the retry is said, then the failure, once.
+    vi.clearAllMocks();
+    const busy = startHub();
+    busy.prices.answer(
+      "/key/issue",
+      envelope(503, "hub_unconfigured"),
+      envelope(503, "hub_unconfigured"),
+    );
+    const its = busy.browser();
+    await busy.signIn(its);
+    expectLanded(await busy.issue(its), "failed");
+    const [, second] = busy.prices.accepted;
+    expect(logged().split("\n").slice(-1)).toEqual([
+      `prices_call_failed issue discord:${ACCOUNT_ID} jti:${second?.claims.jti} ` +
+        "(Prices answered 503 hub_unconfigured)",
+    ]);
+    expect(logged()).not.toContain("issue_refused");
+
+    // The secret out of reach: Prices is never asked, and the reader has logged why.
     vi.clearAllMocks();
     const unread = startHub({}, { pricesSecret: () => Promise.reject(new Error("no secret")) });
     const browser = unread.browser();
     await unread.signIn(browser);
     expectLanded(await unread.issue(browser), "failed");
     expect(unread.prices.calls).toEqual([]);
-    expect(logged()).toContain(
-      `issue_refused failed discord:${ACCOUNT_ID} (Prices gave no outcome: product_not_configured)`,
-    );
+    expect(logged().split("\n")).toEqual([
+      `signed_in discord:${ACCOUNT_ID}`,
+      `prices_call_failed issue discord:${ACCOUNT_ID} (the secret could not be read)`,
+    ]);
+  });
+
+  // CloudFront waits 30 s for an origin: Discord's three steps (4 s each at most) and Prices'
+  // issue share one deadline, and Prices gets what Discord left of it.
+  it("gives Prices what Discord's steps left of the callback's 25 seconds", async () => {
+    vi.useFakeTimers();
+    expect(ISSUE_CALLBACK_TIMEOUT_MS).toBe(25_000);
+    /** Each of Discord's three steps takes `ms` on the hub's clock. */
+    const slowDiscord = (hub: ReturnType<typeof startHub>, ms: number) => {
+      const { discord } = hub;
+      for (const step of ["exchange", "user", "member"] as const) {
+        const original = discord[step].bind(discord) as (...args: unknown[]) => unknown;
+        (discord as unknown as Record<string, unknown>)[step] = (...args: unknown[]) => {
+          hub.advance(ms);
+          return original(...args);
+        };
+      }
+    };
+
+    const hub = startHub();
+    const browser = hub.browser();
+    await hub.signIn(browser);
+    slowDiscord(hub, 4_000);
+    hub.prices.answer("/key/issue", () => "hang");
+    let settled = false;
+    const back = hub.issue(browser).finally(() => (settled = true));
+    await vi.advanceTimersByTimeAsync(13_000 - 1);
+    expect(settled).toBe(false);
+    expect(hub.prices.calls).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(1);
+    expectLanded(await back, "failed");
+    const [call] = hub.prices.accepted;
+    expect(call?.signal?.aborted).toBe(true);
+    expect(logged().split("\n")).toEqual([
+      `signed_in discord:${ACCOUNT_ID}`,
+      `prices_call_failed issue discord:${ACCOUNT_ID} jti:${call?.claims.jti} ` +
+        "(Prices did not answer in 13 s)",
+    ]);
+    expect(vi.getTimerCount()).toBe(0);
+
+    // Quick steps leave Prices its own 20 s, no more.
+    vi.clearAllMocks();
+    const quick = startHub();
+    const its = quick.browser();
+    await quick.signIn(its);
+    quick.prices.answer("/key/issue", () => "hang");
+    let done = false;
+    const landed = quick.issue(its).finally(() => (done = true));
+    await vi.advanceTimersByTimeAsync(20_000 - 1);
+    expect(done).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expectLanded(await landed, "failed");
+    expect(logged()).toMatch(/\(Prices did not answer in 20 s\)$/);
+
+    // Discord took it all: Prices isn't asked.
+    vi.clearAllMocks();
+    const spent = startHub();
+    const theirs = spent.browser();
+    await spent.signIn(theirs);
+    slowDiscord(spent, 9_000);
+    expectLanded(await spent.issue(theirs), "failed");
+    expect(spent.prices.calls).toEqual([]);
+    expect(logged().split("\n")).toEqual([
+      `signed_in discord:${ACCOUNT_ID}`,
+      `issue_refused failed discord:${ACCOUNT_ID} (Discord took the callback's 25 s, so Prices was not asked)`,
+    ]);
   });
 
   it.each([
@@ -1286,7 +1388,13 @@ describe("Get API Key", () => {
     expectLanded(await callback(browser, again), "failed");
     expect(hub.discord.exchanges).toEqual([signInCode, code]);
     expect(hub.prices.calls).toHaveLength(1);
-    expect(logged()).toContain(`issue_refused failed (the state belongs to another sign-in)`);
+    // In the issue's words, naming the account that asked when this browser's half says it.
+    expect(logged()).toContain("issue_refused failed (no issue was started in this browser)");
+    expect(logged()).toContain(
+      `issue_refused failed discord:${ACCOUNT_ID} (the state belongs to another issue)`,
+    );
+    expect(logged()).not.toContain("sign-in");
+    expect(logged()).not.toContain(OTHER_ID);
   });
 
   // Review focus 2: a key is only ever issued to the account whose session asked for it.
@@ -1398,8 +1506,12 @@ describe("Get API Key", () => {
     expect(hub.prices.calls).toEqual([]);
     expect(browser.session).toBe(session);
     expect(logged()).toContain("signin_refused failed (the state is for another action)");
-    expect(logged()).toContain("issue_refused failed (the state is for another action)");
-    expect(logged()).toContain("issue_refused failed (the state is for another product)");
+    expect(logged()).toContain(
+      `issue_refused failed discord:${ACCOUNT_ID} (the state is for another action)`,
+    );
+    expect(logged()).toContain(
+      `issue_refused failed discord:${ACCOUNT_ID} (the state is for another product)`,
+    );
   });
 
   it("reports a denied consent as cancelled, and Discord's other failures as failed", async () => {
@@ -1408,7 +1520,6 @@ describe("Get API Key", () => {
     await hub.signIn(browser);
     const { state } = await hub.startIssue(browser);
     expectLanded(await callback(browser, { error: "access_denied", state }), "cancelled");
-    expect(logged()).toContain("issue_refused cancelled");
 
     const queries: Record<string, string>[] = [
       { error: "server_error" },
@@ -1428,6 +1539,21 @@ describe("Get API Key", () => {
     expectLanded(await hub.issue(browser), "failed");
     expect(hub.prices.calls).toEqual([]);
     expect(hub.discord.memberLookups).toHaveLength(1);
+
+    // Each refusal names the account that asked, from the browser's half, in the issue's words.
+    const asker = `discord:${ACCOUNT_ID}`;
+    expect(logged().split("\n")).toEqual([
+      `signed_in ${asker}`,
+      `issue_refused cancelled ${asker} (Discord returned an error)`,
+      `issue_refused failed ${asker} (Discord returned an error)`,
+      `issue_refused failed ${asker} (Discord returned an error)`,
+      `issue_refused failed ${asker} (the callback held no code)`,
+      `issue_refused failed ${asker} ` +
+        "(Discord did not complete the issue: Discord answered 400 to exchange the code)",
+      `issue_refused failed ${asker} ` +
+        "(Discord did not complete the issue: Discord answered 401 to read the account)",
+      `issue_refused failed ${asker} (Discord granted other scopes than the two asked for)`,
+    ]);
   });
 
   it("answers 401 without a session and 400 unknown_product for any other product, starting nothing", async () => {

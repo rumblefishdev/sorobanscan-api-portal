@@ -46,6 +46,12 @@ import { tokens, type Tokens } from "./tokens.ts";
 export const SESSION_TTL_SECONDS = 24 * 60 * 60;
 /** How long a started sign-in can be completed: a consent screen and a two-factor prompt, with room. */
 export const PENDING_TTL_SECONDS = 600;
+/**
+ * How long an issue's callback may take, from Discord sending the browser back to the browser's
+ * landing: under CloudFront's 30 s wait for an origin. Discord's three steps take what they take
+ * (4 s each at most) and Prices' `key/issue` gets the rest, never more than its own 20 s.
+ */
+export const ISSUE_CALLBACK_TIMEOUT_MS = 25_000;
 
 /**
  * What a round trip to Discord is for: a sign-in (`GET auth/login`), or a key ("Get API Key", the
@@ -178,7 +184,7 @@ const noStore: MiddlewareHandler = async (c, next) => {
  *   `${base}login?signin=<reason>`. An issue: Discord's account must be the session's, a member
  *   who has cleared screening, and at least `minAccountAgeMinutes` old; then the product issues,
  *   and the browser goes to `${base}dashboard/<product>?issue=<outcome>`, the product's outcome
- *   or why it wasn't asked.
+ *   or why it wasn't asked. The whole callback is bounded by `ISSUE_CALLBACK_TIMEOUT_MS`.
  * - `GET me` says who is signed in: `{authenticated: false}` for nobody, never an error.
  * - `POST auth/logout` ends the session.
  * - `GET <product>/account`, `POST <product>/key/reveal` and `POST <product>/key/revoke` are the
@@ -312,6 +318,8 @@ export function createHub(settings: HubSettings | undefined, deps: HubDeps = {})
   });
 
   app.get("/auth/callback", async (c) => {
+    // An issue's deadline counts from here: see `ISSUE_CALLBACK_TIMEOUT_MS`.
+    const arrived = now();
     const pending = signer.verify<PendingClaims>(
       "pending",
       readCookie(c.req.header("cookie"), PENDING_COOKIE),
@@ -327,6 +335,14 @@ export function createHub(settings: HubSettings | undefined, deps: HubDeps = {})
     // when the round trip started, the browser's half first; nothing else is decided by it.
     const started = pending ?? state;
     const issuing = started?.action === ISSUE ? served(started.product) : undefined;
+    /** What the round trip was for, as a refusal's reason names it. */
+    const trip = issuing ? "issue" : "sign-in";
+    /**
+     * The account an issue was asked for, as this browser's half says it: the hub signed it there
+     * from the session that pressed "Get API Key", so each of the issue's refusals can name it.
+     */
+    const asker =
+      pending?.action === ISSUE && isSnowflake(pending.account) ? pending.account : undefined;
 
     const who = (accountId?: string) => (accountId === undefined ? "" : ` discord:${accountId}`);
     /** Back on `product`'s tab with `outcome`, logged when it isn't the product's own answer. */
@@ -334,25 +350,25 @@ export function createHub(settings: HubSettings | undefined, deps: HubDeps = {})
       product: string,
       outcome: IssueOutcome,
       reason: string,
-      accountId?: string,
+      accountId: string | undefined = asker,
     ) => {
       console.info(`issue_refused ${outcome}${who(accountId)} (${reason})`);
       return c.redirect(`${base}dashboard/${product}?issue=${outcome}`, 303);
     };
     const refuse = (outcome: Refusal, reason: string, accountId?: string) => {
-      if (issuing) return refuseIssue(issuing.name, outcome, reason, accountId);
+      if (issuing) return refuseIssue(issuing.name, outcome, reason, accountId ?? asker);
       console.info(`signin_refused ${outcome}${who(accountId)} (${reason})`);
       return c.redirect(`${base}login?signin=${outcome}`, 303);
     };
 
-    if (!pending) return refuse("failed", "no sign-in was started in this browser");
+    if (!pending) return refuse("failed", `no ${trip} was started in this browser`);
     if (!state) return refuse("failed", "the state is missing, edited or expired");
     if (
       typeof pending.nonce !== "string" ||
       typeof state.nonce !== "string" ||
       !sameString(pending.nonce, state.nonce)
     ) {
-      return refuse("failed", "the state belongs to another sign-in");
+      return refuse("failed", `the state belongs to another ${trip}`);
     }
     if (pending.action !== state.action || !ACTIONS.includes(pending.action)) {
       return refuse("failed", "the state is for another action");
@@ -404,7 +420,7 @@ export function createHub(settings: HubSettings | undefined, deps: HubDeps = {})
       accessToken = granted.accessToken;
       user = await discord.user(accessToken);
     } catch (error) {
-      return refuse("failed", `Discord did not complete the sign-in: ${describeFailure(error)}`);
+      return refuse("failed", `Discord did not complete the ${trip}: ${describeFailure(error)}`);
     }
     if (!isSnowflake(user.id) || typeof user.username !== "string") {
       return refuse("failed", "Discord's account answer held no id or no username");
@@ -445,17 +461,21 @@ export function createHub(settings: HubSettings | undefined, deps: HubDeps = {})
           user.id,
         );
       }
-      // The product applies its own rules (one key, a cap after a revoke) and logs its outcome.
-      const issued = await issue.client.issue(issue.caller);
-      if (!issued.ok) {
+      // Prices gets what Discord's steps left of the callback's deadline.
+      const left = ISSUE_CALLBACK_TIMEOUT_MS - (now() - arrived);
+      if (left <= 0) {
+        const budget = `${ISSUE_CALLBACK_TIMEOUT_MS / 1000} s`;
         return refuseIssue(
           issue.name,
           "failed",
-          `Prices gave no outcome: ${issued.error}`,
-          issue.caller.discordId,
+          `Discord took the callback's ${budget}, so Prices was not asked`,
         );
       }
-      return c.redirect(`${base}dashboard/${issue.name}?issue=${issued.body.outcome}`, 303);
+      // The product applies its own rules (one key, a cap after a revoke). The client logs its
+      // outcome, or why there was none, once: a failure is `failed` on the tab and no more here.
+      const issued = await issue.client.issue(issue.caller, left);
+      const outcome = issued.ok ? issued.body.outcome : "failed";
+      return c.redirect(`${base}dashboard/${issue.name}?issue=${outcome}`, 303);
     }
     const claims: SessionClaims = { id: user.id, username: user.username.slice(0, 64) };
     c.header(
