@@ -200,6 +200,46 @@ describe("the x402 tab", () => {
     expect(requests(fetchMock).filter((r) => r.endsWith("/key/reveal"))).toHaveLength(1);
   });
 
+  it("drops the shown key when it is revoked: the value is in no part of the page after", async () => {
+    stubHub({
+      account: () => answer(200, ACTIVE),
+      reveal: () => answer(200, REVEALED),
+      revoke: () => answer(200, REVOCATION),
+    });
+    renderAt("/api/dashboard/x402");
+    const key = await card();
+    fireEvent.click(within(key).getByRole("button", { name: "Show key" }));
+    await settle();
+    expect(document.body.textContent).toContain(KEY_VALUE);
+    fireEvent.click(within(key).getByRole("button", { name: "Regenerate" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByTestId("replace-key-phrase"), {
+      target: { value: "regenerate-key" },
+    });
+    fireEvent.click(within(dialog).getByTestId("replace-key-confirm"));
+    await settle();
+    expect(within(key).getByText("Revoked")).toBeTruthy();
+    expect(document.body.textContent).not.toContain(KEY_VALUE);
+  });
+
+  it("lands nothing from a reveal that answers after the tab is gone", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    let answerReveal: (response: Response) => void = () => {};
+    stubHub({
+      account: () => answer(200, ACTIVE),
+      reveal: () => new Promise<Response>((resolve) => (answerReveal = resolve)),
+    });
+    const { unmount } = renderAt("/api/dashboard/x402");
+    const key = await card();
+    fireEvent.click(within(key).getByRole("button", { name: "Show key" }));
+    unmount();
+    answerReveal(answer(200, REVEALED));
+    await settle();
+    expect(document.body.textContent).not.toContain(KEY_VALUE);
+    expect(errors).not.toHaveBeenCalled();
+    errors.mockRestore();
+  });
+
   it("copies the key it asks the hub for, leaving it masked on screen", async () => {
     vi.stubGlobal("ClipboardItem", undefined);
     const writeText = vi.fn(() => Promise.resolve());
@@ -379,7 +419,7 @@ describe("the x402 tab", () => {
       ACTIVE,
       "issue-issued",
       "status",
-      "Welcome! Your API key has been generated. Copy it below and make your first request — the Quick Start guide has everything you need.",
+      "Your API key is ready. Show or copy it below.",
     ],
     [
       "has_key",
