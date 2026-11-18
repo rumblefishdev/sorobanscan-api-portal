@@ -1,5 +1,5 @@
 /*
- * The token the hub's backend gives Prices on each call, as the shared sign-in spec's decision 15
+ * The token the hub's backend gives a product (Prices, x402) on each call, as the shared sign-in spec's decision 15
  * has it: `v1.<payload>.<mac>`, the claims' JSON in base64url and its HMAC-SHA256 under the
  * secret both sides read from AWS Secrets Manager (`product-secret.ts`). Prices checks it against
  * the same test vector (`bff/test/token.test.ts`), so a byte changed here is a token it refuses.
@@ -17,13 +17,17 @@ export const SECRET_BYTES = 32;
 const TOKEN_TTL_SECONDS = 60;
 
 const ISSUER = "https://sorobanscan.com/api/hub";
-const AUDIENCE = "prices";
+/** The products that take a token: each is its own `aud` and has a context of its own. */
+export const TOKEN_PRODUCTS = ["prices", "x402"] as const;
+export type TokenProduct = (typeof TOKEN_PRODUCTS)[number];
 /** Put before the payload under the MAC, so a MAC made for anything else is never this one's. */
-const CONTEXT = "sorobanscan-hub/prices-token/v1";
+const contextOf = (product: TokenProduct) => `sorobanscan-hub/${product}-token/v1`;
 const JTI_BYTES = 16;
 
 /** Whom a token is for and what it lets the call do. */
 export interface TokenRequest {
+  /** The product the token is for: its name is the token's `aud`. */
+  product: TokenProduct;
   /** The signed-in Discord account's id: the token's `sub` is `discord:<id>`. */
   discordId: string;
   /** Its username, for Prices to name the account by. Nothing is decided by it. */
@@ -41,10 +45,13 @@ export interface TokenRequest {
  */
 export function mintToken(
   secret: Buffer,
-  { discordId, name, act, now, jti = randomBytes(JTI_BYTES).toString("base64url") }: TokenRequest,
+  { product, discordId, name, act, now, jti = randomBytes(JTI_BYTES).toString("base64url") }: TokenRequest,
 ): string {
   if (secret.length !== SECRET_BYTES) {
     throw new Error(`A product token's secret must be ${SECRET_BYTES} bytes`);
+  }
+  if (!(TOKEN_PRODUCTS as readonly string[]).includes(product)) {
+    throw new Error(`A product token's product must be one of ${TOKEN_PRODUCTS.join(", ")}`);
   }
   if (!isSnowflake(discordId)) {
     throw new Error("A product token's subject must be a Discord id, digits only");
@@ -64,7 +71,7 @@ export function mintToken(
   // In this order, as the test vector has them.
   const claims = {
     iss: ISSUER,
-    aud: AUDIENCE,
+    aud: product,
     sub: `discord:${discordId}`,
     name,
     iat,
@@ -74,7 +81,7 @@ export function mintToken(
   };
   const payload = Buffer.from(JSON.stringify(claims), "utf8").toString("base64url");
   const mac = createHmac("sha256", secret)
-    .update(Buffer.concat([Buffer.from(CONTEXT), Buffer.of(0), Buffer.from(payload)]))
+    .update(Buffer.concat([Buffer.from(contextOf(product)), Buffer.of(0), Buffer.from(payload)]))
     .digest("base64url");
   return `v1.${payload}.${mac}`;
 }

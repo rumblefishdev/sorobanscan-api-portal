@@ -218,6 +218,7 @@ export function pricesClient({
         // A token for each request, a retry's too: one token, one call.
         const jti = randomBytes(16).toString("base64url");
         const token = mintToken(secret, {
+          product: "prices",
           discordId: caller.discordId,
           name: caller.name,
           act,

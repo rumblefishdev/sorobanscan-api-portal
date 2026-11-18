@@ -15,7 +15,7 @@ import {
   secretsManager,
   type SecretsClient,
 } from "../src/product-secret.ts";
-import { mintToken } from "../src/token.ts";
+import { TOKEN_PRODUCTS, mintToken } from "../src/token.ts";
 
 let logs: MockInstance[] = [];
 /** Everything written to the console in the running test. */
@@ -54,6 +54,7 @@ const VECTOR = {
 describe("a product token", () => {
   it("is the spec's test vector, byte for byte", () => {
     const token = mintToken(VECTOR.secret, {
+      product: "prices",
       discordId: "80351110224678912",
       name: "nelly",
       act: "reveal",
@@ -80,12 +81,39 @@ describe("a product token", () => {
   });
 
   const SECRET = Buffer.alloc(32, 7);
-  const CALLER = { discordId: "80351110224678912", name: "nelly", now: 1_795_000_000_999 };
+  const CALLER = { product: "prices" as const, discordId: "80351110224678912", name: "nelly", now: 1_795_000_000_999 };
   const claimsOf = (token: string) =>
     JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8")) as Record<
       string,
       unknown
     >;
+
+  it("signs x402's token under its own audience and context", () => {
+    const x402 = {
+      product: "x402" as const,
+      discordId: "80351110224678912",
+      name: "nelly",
+      act: "reveal" as const,
+      now: 1_795_000_000_000,
+      jti: "AAECAwQFBgcICQoLDA0ODw",
+    };
+    const token = mintToken(VECTOR.secret, x402);
+    expect(token).toBe(
+      "v1.eyJpc3MiOiJodHRwczovL3Nvcm9iYW5zY2FuLmNvbS9hcGkvaHViIiwiYXVkIjoieDQwMiIsInN1YiI6ImRpc2NvcmQ6ODAzNTExMTAyMjQ2Nzg5MTIiLCJuYW1lIjoibmVsbHkiLCJpYXQiOjE3OTUwMDAwMDAsImV4cCI6MTc5NTAwMDA2MCwianRpIjoiQUFFQ0F3UUZCZ2NJQ1FvTERBME9EdyIsImFjdCI6InJldmVhbCJ9.mpP3cY6Kclck-SvWeTU6bYt9xnTiVNmx91xl6L1Qkho",
+    );
+    const prices = mintToken(VECTOR.secret, { ...x402, product: "prices" });
+    expect(token.split(".")[2]).not.toBe(prices.split(".")[2]);
+    expect(claimsOf(token).aud).toBe("x402");
+    expect(TOKEN_PRODUCTS).toEqual(["prices", "x402"]);
+  });
+
+  it("refuses a product it has no token for, naming the field", () => {
+    for (const product of ["", "price", "X402", undefined] as unknown as "prices"[]) {
+      expect(() => mintToken(SECRET, { ...CALLER, act: "read", product }), String(product)).toThrow(
+        /product/,
+      );
+    }
+  });
 
   it("carries exactly the claims, in order, with a fresh random jti of 16 bytes", () => {
     const first = claimsOf(mintToken(SECRET, { ...CALLER, act: "read" }));
