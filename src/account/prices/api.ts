@@ -43,7 +43,10 @@ export type PricesKey =
       can_issue: boolean;
     };
 
-/** Prices' `account`: the key, and the account's use this period (`null` when Prices has none). */
+/**
+ * Prices' `account`: the key, and the account's use this period. `null` when Prices gave none,
+ * which beside an `active` key means its read of the usage failed (the hub's contract).
+ */
 export interface PricesAccount {
   key: PricesKey;
   usage: PortalUsage | null;

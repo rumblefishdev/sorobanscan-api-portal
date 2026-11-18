@@ -8,7 +8,7 @@ import { planViewOf, usageTitle, type PlanView } from "../../prices/dashboard/pl
 import { RateLimitCard } from "../../prices/dashboard/RateLimitCard";
 import { UsageFigures } from "../../prices/dashboard/UsageFigures";
 import { DashboardCard } from "../../prices/landing/DashboardPanel";
-import { fetchAccount } from "./api";
+import { fetchAccount, type PricesAccount } from "./api";
 import { useIssueOutcome } from "./IssueOutcome";
 import { KeyCard, type Account, type AccountView } from "./KeyCard";
 
@@ -82,7 +82,7 @@ export function PricesTab({ account }: { account: Account }) {
   const plan: PlanView =
     view.state === "loading"
       ? { state: "loading" }
-      : view.state === "failed"
+      : view.state === "failed" || usageReadFailed(view.account)
         ? { state: "failed" }
         : planViewOf(view.account.usage);
 
@@ -116,6 +116,14 @@ export function PricesTab({ account }: { account: Account }) {
   );
 }
 
+/**
+ * Whether Prices couldn't read the use of a key that works. The hub's contract says so with
+ * `usage: null` beside `active`: a key with nothing counted yet still comes with Prices' usage, its
+ * `used` null, so a missing one is a read that failed, not a new key.
+ */
+const usageReadFailed = (account: PricesAccount) =>
+  account.key.state === "active" && account.usage === null;
+
 /** Monthly Usage: the portal's card (`Usage` in `src/prices/app/app.tsx`), from the account. */
 function UsageCard({ view, settling }: { view: AccountView; settling: boolean }) {
   if (view.state === "loading") {
@@ -125,8 +133,9 @@ function UsageCard({ view, settling }: { view: AccountView; settling: boolean })
       </DashboardCard>
     );
   }
-  if (view.state === "failed") {
-    // The key card above says why; this one says only what is missing.
+  // Prices' "Could not load your usage", without its reason: when the account failed the key card
+  // above says why, and when only the usage did the hub's contract gives none.
+  if (view.state === "failed" || usageReadFailed(view.account)) {
     return (
       <DashboardCard title="Monthly Usage">
         <p data-testid="usage-failed">Could not load your usage.</p>
@@ -150,6 +159,7 @@ function UsageCard({ view, settling }: { view: AccountView; settling: boolean })
           Your key was deactivated; there is no usage to show for it.
         </p>
       ) : (
+        // `settling`: the key was issued a moment ago and Prices doesn't list it yet.
         <p>Your key is new — usage figures appear here with a delay after your first requests.</p>
       )}
     </DashboardCard>
