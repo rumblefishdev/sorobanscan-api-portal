@@ -6,7 +6,7 @@ import { App } from "../App";
 
 /**
  * The dashboard's x402 tab, through the account pages' `App`, on the hub's backend in memory:
- * `/me` for the session and the three x402 routes the tab calls (`bff/src/products/x402.ts`).
+ * `/me` for the session and the three x402 routes the tab calls (`bff/src/products/client.ts`).
  */
 
 let where = "";
@@ -509,6 +509,28 @@ describe("the x402 tab", () => {
     expect(await screen.findByTestId("api-key")).toBeTruthy();
     expect(screen.queryByTestId("account-failed")).toBeNull();
     expect(requests(fetchMock).filter((r) => r.endsWith("/account"))).toHaveLength(2);
+  });
+
+  it.each([
+    [
+      "429 rate_limited",
+      answer(429, { error: "rate_limited" }),
+      "Too many requests for your account. Wait a minute and try again. (rate_limited)",
+    ],
+    [
+      "502 invalid_token",
+      answer(502, { error: "invalid_token" }),
+      "x402 refused the hub's request — this is ours to fix, so tell us if it keeps happening (invalid_token)",
+    ],
+  ])("says %s in its own words on a failed reveal", async (_, failing, words) => {
+    stubHub({ account: () => answer(200, ACTIVE), reveal: () => failing.clone() });
+    renderAt("/api/dashboard/x402");
+    const key = await card();
+    fireEvent.click(within(key).getByRole("button", { name: "Show key" }));
+    await settle();
+    expect(within(key).getByTestId("reveal-failed").textContent).toBe(
+      `Could not show your API key: ${words}.`,
+    );
   });
 
   it("offers a fresh sign-in when the session has ended", async () => {
