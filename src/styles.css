@@ -403,6 +403,31 @@ code {
   flex-direction: column;
   gap: 40px;
 }
+/* Above the design's breakpoint each section is a screen of its own, its content in the middle
+   of it (akot, 2026-11-19): a link to `#products` then shows the section whole, not its heading
+   under an empty band. The design's space between two sections is halved onto each side of one,
+   so two that are taller than the screen stand as far apart as before; `min-height`, so such a
+   section grows and is never cut. The closing panel keeps its own height: it ends the page, with
+   the footer under it. `dvh` and its fallback as for `.first-screen`. On a phone nearly every
+   section is taller than the screen, and a short one would only leave a gap. */
+@media (min-width: 721px) {
+  .section:not(.closing) {
+    padding-top: calc(var(--section-space) / 2);
+    padding-bottom: calc(var(--section-space) / 2);
+    min-height: calc(100vh - var(--section-space));
+    justify-content: center;
+  }
+  @supports (height: 100dvh) {
+    .section:not(.closing) {
+      min-height: calc(100dvh - var(--section-space));
+    }
+  }
+  /* The two that lay their parts in a row: a wrapping row's lines are centred by `align-content`. */
+  .section.ssa,
+  .section.faq {
+    align-content: center;
+  }
+}
 .section-head {
   display: flex;
   flex-direction: column;
