@@ -207,3 +207,43 @@ describe('devProxy', () => {
     expect(devProxy('', 'test-key-must-not-leak')).toBeUndefined();
   });
 });
+
+// The x402 Facilitator's page is another repo's, with a dev server of its own; on this one the
+// hub's page answered at its address (akot, 2026-11-19).
+describe('the x402 page on the dev server', () => {
+  const rule = (proxy: Record<string, ProxyEntry> | undefined) => {
+    const key = Object.keys(proxy ?? {}).find((k) => k.includes('x402-facilitator'));
+    return key === undefined ? undefined : { key, entry: proxy?.[key] };
+  };
+
+  afterEach(() => {
+    delete process.env['DEV_X402_PAGE_TARGET'];
+  });
+
+  it('sends the page and everything under it to its own dev server', () => {
+    for (const side of ['server', 'preview'] as const) {
+      const found = rule(resolve()[side]?.proxy);
+      expect(found?.entry?.target).toBe('http://localhost:5174');
+      const matches = new RegExp(found?.key ?? '$^');
+      for (const path of [
+        '/api/x402-facilitator',
+        '/api/x402-facilitator/',
+        '/api/x402-facilitator/src/main.tsx',
+        '/api/x402-facilitator/?token=abc',
+      ]) {
+        expect(matches.test(path), path).toBe(true);
+      }
+      // The hub's own pages and backend, and an address that only starts the same.
+      for (const path of ['/api/', '/api/docs/x402', '/api/hub/x402/account', '/api/x402-facilitatorX']) {
+        expect(matches.test(path), path).toBe(false);
+      }
+    }
+  });
+
+  it('goes where DEV_X402_PAGE_TARGET says, and nowhere when it is set to nothing', () => {
+    process.env['DEV_X402_PAGE_TARGET'] = 'http://localhost:6000';
+    expect(rule(resolve().server?.proxy)?.entry?.target).toBe('http://localhost:6000');
+    process.env['DEV_X402_PAGE_TARGET'] = '';
+    expect(rule(resolve().server?.proxy)).toBeUndefined();
+  });
+});
