@@ -328,6 +328,20 @@ export function exampleOf(
   }
 }
 
+/**
+ * The scheme of a document whose key travels as `Authorization: Bearer`, if it
+ * names one: x402's, where Prices' key is a header of its own
+ * ({@link apiKeyHeader}).
+ */
+export function bearerScheme(
+  doc: OpenApiDocument,
+): SecurityScheme | undefined {
+  return Object.values(doc.components?.securitySchemes ?? {}).find(
+    (scheme) =>
+      scheme.type === 'http' && scheme.scheme?.toLowerCase() === 'bearer',
+  );
+}
+
 /** Whether a request to this operation must carry a key. */
 export function requiresKey(doc: OpenApiDocument, op: Operation): boolean {
   const requirements = op.security ?? doc.security ?? [];

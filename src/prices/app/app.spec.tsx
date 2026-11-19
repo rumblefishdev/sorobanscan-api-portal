@@ -9,7 +9,8 @@ import { MemoryRouter, useLocation, useNavigate } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ROUTER_BASENAME } from '../base-path';
-import { RUMBLEFISH_CONTACT } from '../landing/links';
+import { Navbar } from '../landing/Chrome';
+import { PRIVACY_POLICY, RUMBLEFISH_CONTACT } from '../landing/links';
 import App from './app';
 import { FIXTURE } from '../docs/openapi.fixture';
 
@@ -90,13 +91,19 @@ const REWORK_URL = '/api/key/rework';
 const ISSUE_HREF = '/api/auth/login?action=issue';
 /**
  * The hub's backend (the shared sign-in): who is signed in to the hub, which
- * decides the bar over the quick start, the reference and the privacy policy,
- * and the hub's sign-out.
+ * decides what the hub's bar over the landing page and the privacy policy
+ * offers, and the hub's sign-out.
  */
 const HUB_ME_URL = '/api/hub/me';
 const HUB_LOGOUT_URL = '/api/hub/auth/logout';
-/** Nobody signed in to the hub: every page keeps this portal's own bars. */
+/** Nobody signed in to the hub: its bar offers "Log in". */
 const hubSignedOut = () => ({ json: async () => ({ authenticated: false }) });
+/**
+ * The hub's bar by its name. It is one component, labelled by what it holds:
+ * "Documentation" for a visitor who isn't signed in to the hub (Quick start,
+ * OpenAPI Docs, Log in), "Dashboard" for one who is (`AccountNavbar`).
+ */
+const HUB_BAR_SIGNED_OUT = 'Documentation';
 
 /**
  * `/config` for an open portal (task 0183) carrying the free plan's rate limit
@@ -197,7 +204,9 @@ const renderApp = () =>
  * zero controls while the flag is off, and the two controls that could promise
  * a key from outside it — the hero's and the navbar's "Get API Key" — are
  * rendered only on a confirmed-open probe and are covered by their own test
- * below. Widening the scope back out would fail on the footer, not on a
+ * below. (The navbar's is on the landing bar, which the landing page draws
+ * only with this portal's own sign-in; under the hub's bar, since 2026-11-19,
+ * the hero's and the closing call to action's are the two.) Widening the scope back out would fail on the footer, not on a
  * regression.
  */
 function portalPanel() {
@@ -410,70 +419,11 @@ describe('routes', () => {
     await waitFor(() => expect(lastPath).toBe('/'));
   });
 
-  it('serves the quick start to a signed-in visitor under the dashboard bar', async () => {
-    openAndSignedIn();
-    renderAt('/quick-start');
-
-    expect(
-      await screen.findByRole('heading', {
-        name: /get your first response in under 5 minutes/i,
-      }),
-    ).toBeTruthy();
-    // The signed-in bar — once `/auth/me` has answered — with THIS page
-    // underlined rather than the dashboard.
-    const bar = within(
-      await screen.findByRole('navigation', { name: 'Dashboard' }),
-    );
-    expect(
-      bar
-        .getByRole('link', { name: 'Quick start' })
-        .getAttribute('aria-current'),
-    ).toBe('page');
-    expect(
-      bar.getByRole('link', { name: 'Dashboard' }).getAttribute('aria-current'),
-    ).toBeNull();
-    expect(bar.getByText('adam')).toBeTruthy();
-    expect(lastPath).toBe('/quick-start');
-  });
-
-  it('serves the API reference to a signed-in visitor under the dashboard bar', async () => {
-    openAndSignedIn();
-    renderAt('/docs');
-
-    expect(
-      await screen.findByRole('heading', { level: 1, name: /api reference/i }),
-    ).toBeTruthy();
-    // The document's own content, once it has arrived.
-    expect(
-      await screen.findByRole('button', { name: /GET \/v1\/assets/ }),
-    ).toBeTruthy();
-    const bar = within(
-      await screen.findByRole('navigation', { name: 'Dashboard' }),
-    );
-    expect(
-      bar
-        .getByRole('link', { name: 'OpenAPI Docs' })
-        .getAttribute('aria-current'),
-    ).toBe('page');
-    expect(
-      bar.getByRole('link', { name: 'Dashboard' }).getAttribute('aria-current'),
-    ).toBeNull();
-    expect(lastPath).toBe('/docs');
-  });
-
-  it('serves the API reference to a signed-out visitor under the landing bar', async () => {
-    openAndSignedOut();
-    renderAt('/docs');
-
-    expect(
-      await screen.findByRole('heading', { level: 1, name: /api reference/i }),
-    ).toBeTruthy();
-    expect(
-      await screen.findByRole('navigation', { name: 'Primary' }),
-    ).toBeTruthy();
-    expect(screen.queryByRole('navigation', { name: 'Dashboard' })).toBeNull();
-    expect(lastPath).toBe('/docs');
-  });
+  // The quick start and the API reference were pages of this app until
+  // 2026-11-19. They are the hub's now, one for every API
+  // (`src/account/docs/DocsPage.tsx`, tested in its own spec), and these two
+  // addresses send the browser there: "the hub's sign-in and dashboard",
+  // below, has them beside `/login` and `/dashboard`.
 
   it('points the footer dashboard link at the prefix the app is served from', async () => {
     openAndSignedIn();
@@ -485,7 +435,7 @@ describe('routes', () => {
     render(
       <MemoryRouter
         basename={ROUTER_BASENAME}
-        initialEntries={[`${ROUTER_BASENAME}/quick-start`]}
+        initialEntries={[`${ROUTER_BASENAME}/privacy-policy`]}
       >
         <App />
       </MemoryRouter>,
@@ -500,34 +450,37 @@ describe('routes', () => {
     ).toBe(`${ROUTER_BASENAME}/dashboard`);
   });
 
-  it('serves the quick start to a signed-out visitor too, under the landing bar', async () => {
-    openAndSignedOut();
-    renderAt('/quick-start');
-
-    expect(
-      await screen.findByRole('heading', {
-        name: /get your first response in under 5 minutes/i,
-      }),
-    ).toBeTruthy();
-    expect(screen.getByRole('navigation', { name: 'Primary' })).toBeTruthy();
-    expect(screen.queryByRole('navigation', { name: 'Dashboard' })).toBeNull();
-  });
-
-  it('serves the privacy policy under the landing bar, with the footer pointing at it', async () => {
+  // Under the hub's bar, with "Log in", since 2026-11-19 (akot): the landing
+  // bar it had until then, with Features, FAQ and Sign in, is the landing
+  // page's alone now, and only with this portal's own sign-in. The policy has
+  // the hub's bar with that sign-in too, which is what this mounts.
+  it("serves the privacy policy under the hub's bar, with the footer pointing at it", async () => {
     openAndSignedOut();
     renderAt('/privacy-policy');
 
     expect(
       await screen.findByRole('heading', { level: 1, name: /privacy policy/i }),
     ).toBeTruthy();
-    expect(screen.getByRole('navigation', { name: 'Primary' })).toBeTruthy();
+    const bar = within(
+      await screen.findByRole('navigation', { name: HUB_BAR_SIGNED_OUT }),
+    );
+    expect(bar.getByRole('link', { name: 'Log in' })).toBeTruthy();
+    expect(screen.queryByRole('navigation', { name: 'Primary' })).toBeNull();
     expect(screen.queryByRole('navigation', { name: 'Dashboard' })).toBeNull();
     const footer = within(screen.getByRole('navigation', { name: 'Footer' }));
+    // The page's whole address, as a plain link: the hub's documentation
+    // pages draw this footer too, under a router whose `/privacy-policy` is
+    // not this page.
     expect(
       footer
         .getByRole('link', { name: /^privacy policy$/i })
         .getAttribute('href'),
-    ).toBe('/privacy-policy');
+    ).toBe(PRIVACY_POLICY);
+    expect(PRIVACY_POLICY).toBe('/api/prices-api/privacy-policy');
+    // And the API reference, the hub's page now, the same way.
+    expect(
+      footer.getByRole('link', { name: 'Documentation' }).getAttribute('href'),
+    ).toBe('/api/docs/prices');
   });
 
   it('re-opens the HubSpot consent banner from the footer, the only way to withdraw consent (task 0316)', async () => {
@@ -547,49 +500,6 @@ describe('routes', () => {
     expect(w._hsp).toEqual([['showBanner']]);
   });
 
-  it('marks the section the quick start opens on in its rail', async () => {
-    openAndSignedOut();
-    renderAt('/quick-start');
-    await screen.findByRole('heading', { name: /^prerequisites$/i });
-
-    const rail = within(
-      screen.getByRole('navigation', { name: 'On this page' }),
-    );
-    const entries = rail.getAllByRole('link');
-    // The ten frame sections plus "Example queries" (task 0163).
-    expect(entries).toHaveLength(11);
-    // Unscrolled, the rail points at the first section rather than at
-    // nothing — the frame underlines `Prerequisites` for the same reason.
-    expect(entries[0].getAttribute('aria-current')).toBe('location');
-    expect(entries.filter((e) => e.getAttribute('aria-current'))).toHaveLength(
-      1,
-    );
-  });
-
-  it('switches the first-request snippet by language and copies it', async () => {
-    openAndSignedIn();
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
-    renderAt('/quick-start');
-    await screen.findByRole('heading', { name: /first request/i });
-
-    const [tabs] = screen.getAllByRole('tablist', { name: 'Language' });
-    fireEvent.click(within(tabs).getByRole('tab', { name: 'Python' }));
-    expect(
-      within(tabs)
-        .getByRole('tab', { name: 'Python' })
-        .getAttribute('aria-selected'),
-    ).toBe('true');
-    expect(screen.getByRole('heading', { name: 'python' })).toBeTruthy();
-
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Copy python example' }),
-    );
-    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(1));
-    expect(writeText.mock.calls[0][0]).toContain('requests.get(');
-    expect(writeText.mock.calls[0][0]).toContain('x-api-key');
-    expect(await screen.findByText('Copied')).toBeTruthy();
-  });
 });
 
 /**
@@ -611,6 +521,14 @@ describe('routes', () => {
 describe("the hub's sign-in and dashboard", () => {
   const HUB_LOGIN = '/api/login?from=prices';
   const HUB_DASHBOARD = '/api/dashboard/prices';
+  /**
+   * The hub's quick start and API reference, at the Prices tab. The tab's own
+   * address, never the bare `/api/quick-start` or `/api/docs`: the explorer
+   * answered those with a `301` back into this app, and a browser that kept
+   * one would loop (`API_REFERENCE` in `landing/links.ts`).
+   */
+  const HUB_QUICKSTART = '/api/quick-start/prices';
+  const HUB_DOCS = '/api/docs/prices';
   /** The browser's way out of this tree: jsdom can't leave the document. */
   const replace = vi.fn();
   const assign = vi.fn();
@@ -637,21 +555,22 @@ describe("the hub's sign-in and dashboard", () => {
       </MemoryRouter>,
     );
 
-  it('points the navbar, the hero and the closing call to action at the hub', async () => {
+  // The bar is the hub's since 2026-11-19 (akot), as on its dashboard: one
+  // "Log in" where the landing bar had "Sign in" and "Get API Key".
+  it('points the bar, the hero and the closing call to action at the hub', async () => {
     openAndSignedOut();
     renderAt('/');
 
     const bar = within(
-      await screen.findByRole('navigation', { name: 'Primary' }),
+      await screen.findByRole('navigation', { name: HUB_BAR_SIGNED_OUT }),
     );
+    // A plain link, the whole address: the sign-in is a page of another tree.
     expect(
-      (await bar.findByRole('link', { name: /get api key/i })).getAttribute(
-        'href',
-      ),
+      bar.getByRole('link', { name: 'Log in' }).getAttribute('href'),
     ).toBe(HUB_LOGIN);
-    expect(
-      bar.getByRole('link', { name: /^sign in$/i }).getAttribute('href'),
-    ).toBe(HUB_LOGIN);
+    expect(bar.queryByRole('link', { name: /get api key/i })).toBeNull();
+    expect(bar.queryByRole('link', { name: /^sign in$/i })).toBeNull();
+    expect(screen.queryByRole('navigation', { name: 'Primary' })).toBeNull();
 
     const hero = screen.getByRole('heading', { level: 1 }).closest('header');
     expect(hero).not.toBeNull();
@@ -671,18 +590,61 @@ describe("the hub's sign-in and dashboard", () => {
         .getAttribute('href'),
     ).toBe(HUB_LOGIN);
 
-    // And no other control on the page offers a key or a sign-in elsewhere.
+    // And no other control on the page offers a key or a sign-in elsewhere:
+    // the bar's Log in, the hero's Get API Key and the closing one's.
+    const offers = screen.getAllByRole('link', {
+      name: /get api key|^sign in$|^log in$/i,
+    });
+    expect(offers).toHaveLength(3);
+    for (const offer of offers) expect(offer.getAttribute('href')).toBe(HUB_LOGIN);
+    expect(lastPath).toBe('/');
+  });
+
+  /**
+   * This portal's own landing bar, which the landing page keeps only with
+   * this portal's own sign-in (`accountPages="own"`, until the cutover's step
+   * 4 removes it): its Sign in and Get API Key went to the hub with the rest
+   * at step 3, in the bar and in its phone menu. With the hub's pages the
+   * landing has the hub's bar, which has no menu: its links fit a phone in two
+   * rows (`AccountNavbar`).
+   */
+  const renderOwnAt = (path: string) =>
+    render(
+      <MemoryRouter
+        basename={ROUTER_BASENAME}
+        initialEntries={[`${ROUTER_BASENAME}${path}`]}
+      >
+        <App accountPages="own" />
+        <LocationSpy />
+      </MemoryRouter>,
+    );
+
+  it("points the landing bar's Sign in and Get API Key at the hub", async () => {
+    openAndSignedOut();
+    renderOwnAt('/');
+
+    const bar = within(
+      await screen.findByRole('navigation', { name: 'Primary' }),
+    );
+    expect(
+      (await bar.findByRole('link', { name: /get api key/i })).getAttribute(
+        'href',
+      ),
+    ).toBe(HUB_LOGIN);
+    expect(
+      bar.getByRole('link', { name: /^sign in$/i }).getAttribute('href'),
+    ).toBe(HUB_LOGIN);
+    // With the hero's and the closing call to action's, every one to the hub.
     const offers = screen.getAllByRole('link', {
       name: /get api key|^sign in$/i,
     });
     expect(offers).toHaveLength(4);
     for (const offer of offers) expect(offer.getAttribute('href')).toBe(HUB_LOGIN);
-    expect(lastPath).toBe('/');
   });
 
   it("points the phone menu's Sign in and Get API Key at the hub", async () => {
     openAndSignedOut();
-    renderAt('/');
+    renderOwnAt('/');
 
     // By its label: the menu button shows below `sm` only, jsdom's window is
     // wider than that, and a role query names no hidden element.
@@ -698,21 +660,24 @@ describe("the hub's sign-in and dashboard", () => {
     ).toBe(HUB_LOGIN);
   });
 
-  it("points the quick start bar's Sign in and Get API Key at the hub", async () => {
+  // The privacy policy had the landing bar, with Sign in and Get API Key,
+  // until 2026-11-19. Its bar is the hub's now, and its one way in is Log in.
+  it("points the privacy policy bar's Log in at the hub", async () => {
     openAndSignedOut();
-    renderAt('/quick-start');
+    renderAt('/privacy-policy');
 
     const bar = within(
-      await screen.findByRole('navigation', { name: 'Primary' }),
+      await screen.findByRole('navigation', { name: HUB_BAR_SIGNED_OUT }),
     );
     expect(
-      (await bar.findByRole('link', { name: /get api key/i })).getAttribute(
-        'href',
-      ),
+      bar.getByRole('link', { name: 'Log in' }).getAttribute('href'),
     ).toBe(HUB_LOGIN);
-    expect(
-      bar.getByRole('link', { name: /^sign in$/i }).getAttribute('href'),
-    ).toBe(HUB_LOGIN);
+    // The only sign-in on the page, and no key offered beside it.
+    const offers = screen.getAllByRole('link', {
+      name: /get api key|^sign in$|^log in$/i,
+    });
+    expect(offers).toHaveLength(1);
+    expect(screen.queryByRole('navigation', { name: 'Primary' })).toBeNull();
   });
 
   /** Whatever this portal's own backend says, the two pages are the hub's now. */
@@ -737,11 +702,17 @@ describe("the hub's sign-in and dashboard", () => {
     states.flatMap(([who, stub]) => [
       ['/login', HUB_LOGIN, who, stub] as const,
       ['/dashboard', HUB_DASHBOARD, who, stub] as const,
+      // The quick start and the API reference, the hub's pages since
+      // 2026-11-19, at the Prices tab of each.
+      ['/quick-start', HUB_QUICKSTART, who, stub] as const,
+      ['/docs', HUB_DOCS, who, stub] as const,
     ]),
   )(
     'sends the browser from %s to %s in place of this page, when %s',
     async (path, hub, _who, stub) => {
-      vi.stubGlobal('location', { replace, assign });
+      // `hash`: a browser's address always has one, empty when it names no
+      // part, and the two documentation addresses carry theirs along.
+      vi.stubGlobal('location', { replace, assign, hash: '' });
       stub();
       renderAt(path);
 
@@ -756,8 +727,43 @@ describe("the hub's sign-in and dashboard", () => {
         screen.queryByRole('link', { name: /sign in with discord/i }),
       ).toBeNull();
       expect(screen.queryByRole('heading', { name: /^api key$/i })).toBeNull();
+      // Nor of the page that was here, nor a bar over it: the hub draws both.
+      expect(screen.queryByRole('heading', { level: 1 })).toBeNull();
+      expect(screen.queryByRole('navigation')).toBeNull();
     },
   );
+
+  // The Prices pages handed out links into both: `…/quick-start#examples`
+  // from the landing's documentation cards, an operation's row in the
+  // reference. The hub's pages have the same parts under the same names.
+  it.each([
+    ['/quick-start', '#examples', `${HUB_QUICKSTART}#examples`],
+    ['/docs', '#op-get-v1-assets', `${HUB_DOCS}#op-get-v1-assets`],
+  ] as const)(
+    'keeps the part an address to %s named (%s) on the way to the hub',
+    async (path, hash, hub) => {
+      vi.stubGlobal('location', { replace, assign, hash });
+      openAndSignedOut();
+      renderAt(path);
+
+      await waitFor(() => expect(replace).toHaveBeenCalledWith(hub));
+      expect(replace).toHaveBeenCalledTimes(1);
+      expect(assign).not.toHaveBeenCalled();
+    },
+  );
+
+  // Not so for the sign-in and the dashboard: a `#part` of the old pages
+  // names nothing on the hub's.
+  it.each([
+    ['/login', HUB_LOGIN],
+    ['/dashboard', HUB_DASHBOARD],
+  ] as const)('drops a part from an address to %s', async (path, hub) => {
+    vi.stubGlobal('location', { replace, assign, hash: '#anything' });
+    openAndSignedOut();
+    renderAt(path);
+
+    await waitFor(() => expect(replace).toHaveBeenCalledWith(hub));
+  });
 
   // The old backend's callback still lands on `/`, and `RootRoute` forwards
   // from there to `/login` and `/dashboard`: both end at the hub now.
@@ -781,17 +787,22 @@ describe("the hub's sign-in and dashboard", () => {
 });
 
 /**
- * The hub's bar on the pages it links to (akot, 2026-11-18). The dashboard's
- * bar opens the quick start and the API reference, and a visitor signed in to
- * the hub keeps that bar there: Dashboard, Quick start, OpenAPI Docs, their
- * name and Sign out, the dashboard's own component, not this portal's landing
- * bar with its Features, FAQ and Sign in. The privacy policy shares their bar.
- * Without a hub session these pages keep the bar they had.
+ * The hub's bar on the landing page and the privacy policy. A visitor signed
+ * in to the hub keeps the dashboard's bar there (akot, 2026-11-18): Dashboard,
+ * Quick start, OpenAPI Docs, their name and Sign out, the dashboard's own
+ * component, not this portal's landing bar with its Features, FAQ and Sign in.
+ * Since 2026-11-19 (akot) a visitor who isn't signed in to the hub has the
+ * hub's bar too, with "Log in" for the account, and the landing page is under
+ * it as the policy is: every page of the APIs has the one bar.
+ *
+ * Until 2026-11-19 the quick start and the API reference were pages of this
+ * app under the same bar. Those two are the hub's own pages now
+ * (`src/account/docs/DocsPage.tsx`, where its spec has their bar).
  *
  * Mounted as `main.tsx` mounts it, under the production basename, so the
  * hrefs are the addresses a visitor gets.
  */
-describe("the hub's bar on the pages it links to", () => {
+describe("the hub's bar on the landing page and the privacy policy", () => {
   const replace = vi.fn();
   const assign = vi.fn();
 
@@ -841,67 +852,109 @@ describe("the hub's bar on the pages it links to", () => {
       ...more,
     });
 
-  /** Each page under the bar, with the bar's link that is underlined there. */
-  const pages = [
-    ['/quick-start', 'Quick start'],
-    ['/docs', 'OpenAPI Docs'],
+  /** The page most of these run on; `PAGES` has the landing page with it. */
+  const PAGE = '/privacy-policy';
+  const PAGES = ['/', PAGE] as const;
+
+  // The landing page, under the hub's bar since 2026-11-19: until then a
+  // visitor signed in to the hub met "Sign in" and "Get API Key" on it.
+  it("shows the dashboard's bar on the landing page to a visitor signed in to the hub", async () => {
+    withHub(hubSignedIn);
+    renderAt('/');
+
+    const bar = within(
+      await screen.findByRole('navigation', { name: 'Dashboard' }),
+    );
+    expect(
+      bar.getByRole('link', { name: 'Dashboard' }).getAttribute('href'),
+    ).toBe('/api/dashboard/prices');
+    expect(
+      bar.getByRole('link', { name: 'Quick start' }).getAttribute('href'),
+    ).toBe('/api/quick-start/prices');
+    expect(
+      bar.getByRole('link', { name: 'OpenAPI Docs' }).getAttribute('href'),
+    ).toBe('/api/docs/prices');
     // A page under the bar that is not in it: nothing is underlined.
-    ['/privacy-policy', null],
-  ] as const;
-
-  it.each(pages)(
-    "shows the dashboard's bar on %s to a visitor signed in to the hub",
-    async (path, current) => {
-      withHub(hubSignedIn);
-      renderAt(path);
-
-      const bar = within(
-        await screen.findByRole('navigation', { name: 'Dashboard' }),
-      );
-      // The dashboard's three links, where the dashboard's bar sends them:
-      // the Prices tab, and these two pages, as routes of this tree.
+    for (const name of ['Dashboard', 'Quick start', 'OpenAPI Docs']) {
       expect(
-        bar.getByRole('link', { name: 'Dashboard' }).getAttribute('href'),
-      ).toBe('/api/dashboard/prices');
+        bar.getByRole('link', { name }).getAttribute('aria-current'),
+        name,
+      ).toBeNull();
+    }
+    expect(bar.getByText('akot')).toBeTruthy();
+    expect(bar.getByRole('button', { name: 'Sign out' })).toBeTruthy();
+    // Signed in, the bar offers no sign-in, and it is the page's one bar:
+    // not the landing's, and not the hub's for a visitor it doesn't know.
+    expect(bar.queryByRole('link', { name: /^log in$/i })).toBeNull();
+    expect(screen.queryByRole('navigation', { name: 'Primary' })).toBeNull();
+    expect(
+      screen.queryByRole('navigation', { name: HUB_BAR_SIGNED_OUT }),
+    ).toBeNull();
+    expect(screen.queryByLabelText('Open menu')).toBeNull();
+    // The landing page under it, not a forward to the dashboard: only a
+    // session on this portal's old backend is sent on from here.
+    expect(screen.getByRole('heading', { level: 1 })).toBeTruthy();
+    expect(lastPath).toBe('/');
+  });
+
+  it("shows the dashboard's bar to a visitor signed in to the hub", async () => {
+    withHub(hubSignedIn);
+    renderAt(PAGE);
+
+    const bar = within(
+      await screen.findByRole('navigation', { name: 'Dashboard' }),
+    );
+    // The dashboard's three links, each to the Prices tab of the hub's page:
+    // pages of another tree, so the whole address.
+    expect(
+      bar.getByRole('link', { name: 'Dashboard' }).getAttribute('href'),
+    ).toBe('/api/dashboard/prices');
+    expect(
+      bar.getByRole('link', { name: 'Quick start' }).getAttribute('href'),
+    ).toBe('/api/quick-start/prices');
+    expect(
+      bar.getByRole('link', { name: 'OpenAPI Docs' }).getAttribute('href'),
+    ).toBe('/api/docs/prices');
+    // A page under the bar that is not in it: nothing is underlined.
+    for (const name of ['Dashboard', 'Quick start', 'OpenAPI Docs']) {
       expect(
-        bar.getByRole('link', { name: 'Quick start' }).getAttribute('href'),
-      ).toBe('/api/prices-api/quick-start');
-      expect(
-        bar.getByRole('link', { name: 'OpenAPI Docs' }).getAttribute('href'),
-      ).toBe('/api/prices-api/docs');
-      for (const name of ['Dashboard', 'Quick start', 'OpenAPI Docs']) {
-        expect(
-          bar.getByRole('link', { name }).getAttribute('aria-current'),
-          name,
-        ).toBe(name === current ? 'page' : null);
-      }
-      expect(bar.getByText('akot')).toBeTruthy();
-      expect(bar.getByRole('button', { name: 'Sign out' })).toBeTruthy();
+        bar.getByRole('link', { name }).getAttribute('aria-current'),
+        name,
+      ).toBeNull();
+    }
+    expect(bar.getByText('akot')).toBeTruthy();
+    expect(bar.getByRole('button', { name: 'Sign out' })).toBeTruthy();
+    // Signed in, the bar offers no sign-in.
+    expect(bar.queryByRole('link', { name: /^log in$/i })).toBeNull();
 
-      // None of the landing bar.
-      expect(screen.queryByRole('navigation', { name: 'Primary' })).toBeNull();
-      for (const name of [/^features$/i, /^faq$/i, /^sign in$/i]) {
-        expect(screen.queryByRole('link', { name }), String(name)).toBeNull();
-      }
-      expect(lastPath).toBe(path);
-    },
-  );
+    // None of the landing bar.
+    expect(screen.queryByRole('navigation', { name: 'Primary' })).toBeNull();
+    for (const name of [/^features$/i, /^faq$/i, /^sign in$/i]) {
+      expect(screen.queryByRole('link', { name }), String(name)).toBeNull();
+    }
+    expect(lastPath).toBe(PAGE);
+  });
 
-  it.each(pages)(
-    "offers the hub's Dashboard in the footer on %s too, where the bar's goes",
-    async (path) => {
-      withHub(hubSignedIn);
-      renderAt(path);
+  it("offers the hub's Dashboard in the footer too, where the bar's goes", async () => {
+    withHub(hubSignedIn);
+    renderAt(PAGE);
 
-      await screen.findByRole('navigation', { name: 'Dashboard' });
-      const footer = within(screen.getByRole('navigation', { name: 'Footer' }));
-      expect(
-        footer.getByRole('link', { name: 'Dashboard' }).getAttribute('href'),
-      ).toBe('/api/dashboard/prices');
-    },
-  );
+    await screen.findByRole('navigation', { name: 'Dashboard' });
+    const footer = within(screen.getByRole('navigation', { name: 'Footer' }));
+    expect(
+      footer.getByRole('link', { name: 'Dashboard' }).getAttribute('href'),
+    ).toBe('/api/dashboard/prices');
+  });
 
-  it.each([
+  /**
+   * The hub's three answers that are not a session. Until 2026-11-19 each left
+   * the privacy policy under this portal's landing bar (Features, Quick Start,
+   * FAQ, Sign in); now each gets the hub's own bar for a visitor who isn't
+   * signed in, on the landing page too: not knowing who is signed in is no
+   * reason to hold a page back that needs nobody to be, and "Log in" leads to
+   * the page that says what is wrong.
+   */
+  const NO_HUB_SESSION = [
     ['nobody is signed in to it', hubSignedOut],
     [
       'it has no sign-in configured',
@@ -915,35 +968,63 @@ describe("the hub's bar on the pages it links to", () => {
       'it fails',
       () => ({ ok: false, status: 500, json: async () => ({}) }),
     ],
-  ] as const)(
-    'keeps the landing bar on every page under it when the hub says %s',
-    async (_who, hub) => {
-      for (const [path] of pages) {
-        withHub(hub);
-        const { unmount } = renderAt(path);
+  ] as const;
 
-        const bar = within(
-          await screen.findByRole('navigation', { name: 'Primary' }),
-        );
-        expect(bar.getByRole('link', { name: /^features$/i })).toBeTruthy();
-        expect(bar.getByRole('link', { name: /^quick start$/i })).toBeTruthy();
-        expect(bar.getByRole('link', { name: /^faq$/i })).toBeTruthy();
+  it.each(
+    NO_HUB_SESSION.flatMap(([who, hub]) =>
+      PAGES.map((page) => [page, who, hub] as const),
+    ),
+  )(
+    "shows the hub's bar with Log in on %s when the hub says %s",
+    async (page, _who, hub) => {
+      withHub(hub);
+      renderAt(page);
+
+      const bar = within(
+        await screen.findByRole('navigation', { name: HUB_BAR_SIGNED_OUT }),
+      );
+      // The hub's pages, at the Prices tab: pages of another tree, so the
+      // whole address, and the sign-in the same way.
+      expect(
+        bar.getByRole('link', { name: 'Quick start' }).getAttribute('href'),
+      ).toBe('/api/quick-start/prices');
+      expect(
+        bar.getByRole('link', { name: 'OpenAPI Docs' }).getAttribute('href'),
+      ).toBe('/api/docs/prices');
+      expect(
+        bar.getByRole('link', { name: 'Log in' }).getAttribute('href'),
+      ).toBe('/api/login?from=prices');
+      // A page under the bar that is not in it: nothing is underlined.
+      for (const name of ['Quick start', 'OpenAPI Docs']) {
         expect(
-          (await bar.findByRole('link', { name: /^sign in$/i })).getAttribute(
-            'href',
-          ),
-        ).toBe('/api/login?from=prices');
-        expect(
-          screen.queryByRole('navigation', { name: 'Dashboard' }),
-          path,
+          bar.getByRole('link', { name }).getAttribute('aria-current'),
+          name,
         ).toBeNull();
-        // Nor a dashboard in the footer: nobody is signed in anywhere.
-        const footer = within(
-          screen.getByRole('navigation', { name: 'Footer' }),
-        );
-        expect(footer.queryByRole('link', { name: 'Dashboard' }), path).toBeNull();
-        unmount();
       }
+      // Nothing of an account: no dashboard to open, nobody to sign out.
+      expect(bar.queryByRole('link', { name: 'Dashboard' })).toBeNull();
+      expect(bar.queryByRole('button', { name: 'Sign out' })).toBeNull();
+      // And nothing of the landing bar it took the place of.
+      for (const name of [/^features$/i, /^faq$/i, /^sign in$/i, /get api key/i]) {
+        expect(bar.queryByRole('link', { name }), String(name)).toBeNull();
+      }
+      expect(screen.queryByRole('navigation', { name: 'Primary' })).toBeNull();
+      expect(screen.queryByRole('navigation', { name: 'Dashboard' })).toBeNull();
+      expect(screen.queryByLabelText('Open menu')).toBeNull();
+      expect(lastPath).toBe(page);
+    },
+  );
+
+  it.each(NO_HUB_SESSION)(
+    "offers no dashboard in the policy's footer when the hub says %s",
+    async (_who, hub) => {
+      withHub(hub);
+      renderAt(PAGE);
+
+      await screen.findByRole('navigation', { name: HUB_BAR_SIGNED_OUT });
+      // Nobody is signed in anywhere.
+      const footer = within(screen.getByRole('navigation', { name: 'Footer' }));
+      expect(footer.queryByRole('link', { name: 'Dashboard' })).toBeNull();
     },
   );
 
@@ -959,7 +1040,7 @@ describe("the hub's bar on the pages it links to", () => {
       [KEY_URL]: keyNoKey,
       [USAGE_URL]: usageNoKey,
     });
-    renderAt('/quick-start');
+    renderAt(PAGE);
 
     const bar = within(
       await screen.findByRole('navigation', { name: 'Dashboard' }),
@@ -986,17 +1067,20 @@ describe("the hub's bar on the pages it links to", () => {
         };
       },
     }));
-    renderAt('/quick-start');
+    renderAt(PAGE);
 
     // The page itself doesn't wait.
-    await screen.findByRole('heading', {
-      name: /get your first response in under 5 minutes/i,
-    });
+    await screen.findByRole('heading', { level: 1, name: /privacy policy/i });
     await screen.findByRole('navigation', { name: 'On this page' });
-    // Neither bar's links, for a visitor who may be either.
+    // Neither set of links, for a visitor who may be either: not the account's
+    // Dashboard and Sign out, not the stranger's Log in.
     expect(screen.queryByRole('navigation', { name: 'Primary' })).toBeNull();
     expect(screen.queryByRole('navigation', { name: 'Dashboard' })).toBeNull();
+    expect(
+      screen.queryByRole('navigation', { name: HUB_BAR_SIGNED_OUT }),
+    ).toBeNull();
     expect(screen.queryByRole('link', { name: /^sign in$/i })).toBeNull();
+    expect(screen.queryByRole('link', { name: /^log in$/i })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Sign out' })).toBeNull();
     // The bar's place, with the mark both bars start with.
     const placeholder = screen.getByTestId('bar-placeholder');
@@ -1050,31 +1134,84 @@ describe("the hub's bar on the pages it links to", () => {
     expect(heights(nav)).toEqual(place);
   });
 
-  it("moves between the pages by the bar's links without asking the hub again", async () => {
-    const fetchMock = withHub(hubSignedIn);
-    renderAt('/quick-start');
+  // "Moves between the pages by the bar's links without asking the hub again"
+  // was here: it pressed the bar's OpenAPI Docs on the quick start and counted
+  // one `/me`. The bar's links leave this tree now, as plain links to the
+  // hub's pages, so there are no two pages here to move between; the account
+  // tree asks `/me` once for all of its pages (`src/account/App.spec.tsx`).
 
-    const bar = within(
-      await screen.findByRole('navigation', { name: 'Dashboard' }),
-    );
-    fireEvent.click(bar.getByRole('link', { name: 'OpenAPI Docs' }));
+  // The landing page draws the bar's place too while the hub is asked: until
+  // 2026-11-19 it drew its own bar at once and asked the hub nothing.
+  it('draws neither set of links on the landing page while the hub is asked', async () => {
+    let answer: () => void = () => undefined;
+    const asked = new Promise<void>((resolve) => {
+      answer = resolve;
+    });
+    withHub(() => ({
+      json: async () => {
+        await asked;
+        return { authenticated: false };
+      },
+    }));
+    renderAt('/');
 
-    await waitFor(() => expect(lastPath).toBe('/docs'));
-    const after = within(screen.getByRole('navigation', { name: 'Dashboard' }));
+    // The page itself doesn't wait.
+    await screen.findByRole('heading', { level: 1 });
+    const placeholder = await screen.findByTestId('bar-placeholder');
     expect(
-      after
-        .getByRole('link', { name: 'OpenAPI Docs' })
-        .getAttribute('aria-current'),
-    ).toBe('page');
+      within(placeholder)
+        .getByRole('link', { name: 'SorobanScan' })
+        .getAttribute('href'),
+    ).toBe('https://sorobanscan.com/');
+    expect(within(placeholder).getAllByRole('link')).toHaveLength(1);
+    expect(screen.queryByRole('navigation', { name: 'Primary' })).toBeNull();
+    expect(screen.queryByRole('navigation', { name: 'Dashboard' })).toBeNull();
+    expect(
+      screen.queryByRole('navigation', { name: HUB_BAR_SIGNED_OUT }),
+    ).toBeNull();
+    expect(screen.queryByRole('link', { name: /^log in$/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Sign out' })).toBeNull();
+
+    answer();
+    const bar = within(
+      await screen.findByRole('navigation', { name: HUB_BAR_SIGNED_OUT }),
+    );
+    expect(bar.getByRole('link', { name: 'Log in' })).toBeTruthy();
     expect(screen.queryByTestId('bar-placeholder')).toBeNull();
+  });
+
+  it.each(PAGES)('asks the hub who is signed in once, on %s', async (page) => {
+    const fetchMock = withHub(hubSignedIn);
+    renderAt(page);
+
+    await screen.findByRole('navigation', { name: 'Dashboard' });
+    if (page === PAGE) {
+      await screen.findByRole('heading', { level: 1, name: /privacy policy/i });
+    }
+    // This portal's own backend has been asked too by then, so the count is
+    // not one taken before the page had settled.
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([url]) => url === ME_URL)).toBe(true),
+    );
     expect(
       fetchMock.mock.calls.filter(([url]) => url === HUB_ME_URL),
     ).toHaveLength(1);
   });
 
-  it('asks the hub nothing on the landing page, whose bar is its own', async () => {
+  // "Asks the hub nothing on the landing page, whose bar is its own" was
+  // here. The landing page is under the hub's bar since 2026-11-19 and asks
+  // the hub, once (above). What is left of it is true with this portal's own
+  // sign-in alone, where the landing page keeps its own bar.
+  it("asks the hub nothing on the landing page under this portal's own bar", async () => {
     const fetchMock = withHub(hubSignedIn);
-    renderAt('/');
+    render(
+      <MemoryRouter
+        basename={ROUTER_BASENAME}
+        initialEntries={[`${ROUTER_BASENAME}/`]}
+      >
+        <App accountPages="own" />
+      </MemoryRouter>,
+    );
 
     await screen.findByRole('navigation', { name: 'Primary' });
     await waitFor(() =>
@@ -1083,12 +1220,13 @@ describe("the hub's bar on the pages it links to", () => {
     expect(fetchMock.mock.calls.some(([url]) => url === HUB_ME_URL)).toBe(
       false,
     );
+    // A session on the hub draws nothing here either: the bar is the portal's.
+    expect(screen.queryByRole('navigation', { name: 'Dashboard' })).toBeNull();
   });
 
   describe('Sign out', () => {
     beforeEach(() => {
-      // jsdom can't leave the document; the page's way out is recorded. The
-      // reference reads the address's `hash` as it opens.
+      // jsdom can't leave the document; the page's way out is recorded.
       vi.stubGlobal('location', { replace, assign, hash: '' });
     });
 
@@ -1096,7 +1234,7 @@ describe("the hub's bar on the pages it links to", () => {
       const fetchMock = withHub(hubSignedIn, {
         [HUB_LOGOUT_URL]: () => ({ status: 204 }),
       });
-      renderAt('/docs');
+      renderAt(PAGE);
 
       fireEvent.click(await screen.findByRole('button', { name: 'Sign out' }));
 
@@ -1121,7 +1259,7 @@ describe("the hub's bar on the pages it links to", () => {
           json: async () => ({ error: 'internal' }),
         }),
       });
-      renderAt('/quick-start');
+      renderAt(PAGE);
 
       const button = (await screen.findByRole('button', {
         name: 'Sign out',
@@ -1133,7 +1271,7 @@ describe("the hub's bar on the pages it links to", () => {
       const failed = await screen.findByText('Sign-out failed. Try again.');
       expect(failed.closest('[role="alert"]')).not.toBeNull();
       expect(assign).not.toHaveBeenCalled();
-      expect(lastPath).toBe('/quick-start');
+      expect(lastPath).toBe(PAGE);
       // Open again, for the try the message asks for.
       expect(button.disabled).toBe(false);
     });
@@ -1174,8 +1312,8 @@ describe('portal home', () => {
     // button is asserted on `/login`, where it now lives. What this test still
     // pins is the gate: flag on, a way in appears and the closed sentence does
     // not.
-    // `findAll`: the landing offers the same control in the navbar, the hero
-    // and the footer, and a `findBy` throws on more than one match.
+    // `findAll`: the landing offers the same control in the hero and in the
+    // closing call to action, and a `findBy` throws on more than one match.
     expect(
       (await screen.findAllByRole('link', { name: /get api key/i })).length,
     ).toBeGreaterThan(0);
@@ -1186,13 +1324,23 @@ describe('portal home', () => {
     const fetchMock = stubFetch({});
     renderApp();
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('/api/config');
-    // An absolute URL here would reintroduce CORS and break task 0186's
-    // SameSite=Lax cookie — both of which fail in a browser, not in curl.
-    expect(url.startsWith('http')).toBe(false);
-    expect(JSON.stringify(init?.headers ?? {})).not.toMatch(/api-key/i);
+    // Found by its address, not as the first call: since 2026-11-19 the landing
+    // page asks the hub who is signed in as well, for its bar, and that
+    // request may go out first.
+    const calls = () => fetchMock.mock.calls as [string, RequestInit?][];
+    await waitFor(() =>
+      expect(calls().map(([url]) => url)).toContain('/api/config'),
+    );
+    const asked = calls();
+    expect(asked.filter(([url]) => url === '/api/config')).toHaveLength(1);
+    // Every request the page makes, the hub's included.
+    for (const [url, init] of asked) {
+      // An absolute URL here would reintroduce CORS and break task 0186's
+      // SameSite=Lax cookie — both of which fail in a browser, not in curl.
+      expect(url.startsWith('http'), url).toBe(false);
+      expect(url.startsWith('/api/'), url).toBe(true);
+      expect(JSON.stringify(init?.headers ?? {}), url).not.toMatch(/api-key/i);
+    }
   });
 
   it('surfaces a backend failure instead of spinning forever', async () => {
@@ -2458,34 +2606,91 @@ describe('navigation off the landing page', () => {
   });
 
   /**
-   * ⚠️ The landing navbar renders on `/quick-start` for a signed-out visitor,
-   * and its three links name landing-page sections (`#features`,
-   * `#get-started`, `#faq`). None of those ids exists there, so all three did
-   * nothing at all when clicked. Off the landing page they point back at it.
+   * ⚠️ The landing navbar rendered off the landing page for a signed-out
+   * visitor (on `/quick-start` when this was written, then on the privacy
+   * policy), and two of its links name landing-page sections (`#features`,
+   * `#faq`). Neither id exists there, so both did nothing at all when
+   * clicked. Off the landing page they point back at it.
+   *
+   * Since 2026-11-19 no page of this app draws the landing bar off the
+   * landing page: the privacy policy, the last that did, has the hub's bar.
+   * The bar still takes `inPage={false}` and its phone menu with it, so the
+   * rule is pinned on the component itself, where it used to be pinned on
+   * the page.
    */
-  it('points the quick start navbar back at the landing page sections', async () => {
+  it('points the navbar off the landing page back at its sections', () => {
+    render(
+      <MemoryRouter initialEntries={['/privacy-policy']}>
+        <Navbar canOfferKey inPage={false} />
+      </MemoryRouter>,
+    );
+
+    const bar = within(screen.getByRole('navigation', { name: 'Primary' }));
+    const features = bar.getByRole('link', { name: /^features$/i });
+    expect(features.getAttribute('href')).toBe(`${ROUTER_BASENAME}/#features`);
+    expect(
+      bar.getByRole('link', { name: /^faq$/i }).getAttribute('href'),
+    ).toBe(`${ROUTER_BASENAME}/#faq`);
+    // "Quick Start" is the page, not the `#get-started` anchor it used to be
+    // (task 0301): the hub's page now, at the Prices tab, so a whole address
+    // and not one with the landing's in front of it.
+    expect(
+      bar.getByRole('link', { name: /^quick start$/i }).getAttribute('href'),
+    ).toBe('/api/quick-start/prices');
+    // And the way in for a visitor who already holds a key: the hub's sign-in
+    // (shared sign-in, cutover step 3), a page of another tree.
+    expect(
+      bar.getByRole('link', { name: /^sign in$/i }).getAttribute('href'),
+    ).toBe('/api/login?from=prices');
+
+    // The phone menu names the same sections, and follows the same rule.
+    fireEvent.click(screen.getByLabelText('Open menu'));
+    const menu = within(screen.getByRole('navigation', { name: 'Menu' }));
+    expect(
+      menu.getByRole('link', { name: /^features$/i }).getAttribute('href'),
+    ).toBe(`${ROUTER_BASENAME}/#features`);
+    expect(
+      menu.getByRole('link', { name: /^faq$/i }).getAttribute('href'),
+    ).toBe(`${ROUTER_BASENAME}/#faq`);
+  });
+
+  // On the landing page itself, which draws that bar with this portal's own
+  // sign-in, the same two links name the sections where they are.
+  it('points the navbar on the landing page at its own sections', async () => {
     openAndSignedOut();
     render(
-      <MemoryRouter initialEntries={['/quick-start']}>
+      <MemoryRouter initialEntries={['/']}>
+        <App accountPages="own" />
+      </MemoryRouter>,
+    );
+
+    const bar = within(
+      await screen.findByRole('navigation', { name: 'Primary' }),
+    );
+    expect(
+      bar.getByRole('link', { name: /^features$/i }).getAttribute('href'),
+    ).toBe('#features');
+    expect(
+      bar.getByRole('link', { name: /^faq$/i }).getAttribute('href'),
+    ).toBe('#faq');
+    expect(document.getElementById('features')).not.toBeNull();
+    expect(document.getElementById('faq')).not.toBeNull();
+    expect(
+      bar.getByRole('link', { name: /^quick start$/i }).getAttribute('href'),
+    ).toBe('/api/quick-start/prices');
+  });
+
+  // What the page around the bar links to, on the privacy policy: these were
+  // asserted with the landing bar's links above while that bar was over it.
+  it("links the policy's marks and footer where they lead", async () => {
+    openAndSignedOut();
+    render(
+      <MemoryRouter initialEntries={['/privacy-policy']}>
         <App />
       </MemoryRouter>,
     );
 
-    const features = await screen.findByRole('link', { name: /^features$/i });
-    expect(features.getAttribute('href')).toBe(`${ROUTER_BASENAME}/#features`);
-    expect(
-      screen.getByRole('link', { name: /^faq$/i }).getAttribute('href'),
-    ).toBe(`${ROUTER_BASENAME}/#faq`);
-    // "Quick Start" is the page, not the `#get-started` anchor it used to be
-    // (task 0301) — a router link, so no basename under this MemoryRouter.
-    expect(
-      screen.getByRole('link', { name: /^quick start$/i }).getAttribute('href'),
-    ).toBe('/quick-start');
-    // And the way in for a visitor who already holds a key: the hub's sign-in
-    // (shared sign-in, cutover step 3), a page of another tree.
-    expect(
-      screen.getByRole('link', { name: /^sign in$/i }).getAttribute('href'),
-    ).toBe('/api/login?from=prices');
+    await screen.findByRole('navigation', { name: HUB_BAR_SIGNED_OUT });
     // The wordmark leads to the explorer's home and the footer's mark to
     // Rumble Fish (task 0301) — both were images that led nowhere.
     expect(
@@ -2498,41 +2703,50 @@ describe('navigation off the landing page', () => {
     // policy" the portal's own page (task 0303). "Status" and the
     // `rumblefish.dev` text are gone (task 0305): the mark above is the
     // company's one link.
-    expect(
-      screen.getByRole('link', { name: /^contact$/i }).getAttribute('href'),
-    ).toBe('https://www.rumblefish.dev/contact/');
+    // In the footer: the policy's own text links to the contact page too.
     const footer = within(screen.getByRole('navigation', { name: 'Footer' }));
+    expect(
+      footer.getByRole('link', { name: /^contact$/i }).getAttribute('href'),
+    ).toBe('https://www.rumblefish.dev/contact/');
     expect(footer.queryByText(/^status$/i)).toBeNull();
     expect(footer.queryByText(/^rumblefish\.dev$/i)).toBeNull();
     expect(
-      screen
+      footer
         .getByRole('link', { name: /^privacy policy$/i })
         .getAttribute('href'),
-    ).toBe('/privacy-policy');
+    ).toBe(PRIVACY_POLICY);
   });
 
   /**
    * The logo is how a visitor leaves the portal for the rest of the explorer
    * (task 0301). Every bar renders the same `Wordmark`, but each route picks
    * its own bar, so each is checked, signed in and out (task 0305). `/login`
-   * has no bar.
+   * has no bar. The quick start and the API reference had rows here until they
+   * became the hub's pages, whose spec checks their bar's logo
+   * (`src/account/docs/DocsPage.spec.tsx`).
+   *
+   * Signed in and out of this portal's old backend, with nobody signed in to
+   * the hub. `own` is this portal's own sign-in and dashboard, where the
+   * landing page has the landing bar; `hub` is what a visitor gets, the hub's
+   * bar on the landing page too. The privacy policy has the hub's bar for a
+   * visitor who isn't signed in either way (2026-11-19), and the old
+   * dashboard's for a session on the old backend.
    */
   it.each([
-    ['/', 'out', 'Primary'],
-    ['/quick-start', 'out', 'Primary'],
-    ['/docs', 'out', 'Primary'],
-    ['/privacy-policy', 'out', 'Primary'],
-    ['/dashboard', 'in', 'Dashboard'],
-    ['/quick-start', 'in', 'Dashboard'],
-    ['/docs', 'in', 'Dashboard'],
-    ['/privacy-policy', 'in', 'Dashboard'],
+    ['/', 'out', 'own', 'Primary'],
+    ['/privacy-policy', 'out', 'own', HUB_BAR_SIGNED_OUT],
+    ['/dashboard', 'in', 'own', 'Dashboard'],
+    ['/privacy-policy', 'in', 'own', 'Dashboard'],
+    ['/', 'out', 'hub', HUB_BAR_SIGNED_OUT],
+    ['/privacy-policy', 'out', 'hub', HUB_BAR_SIGNED_OUT],
+    ['/privacy-policy', 'in', 'hub', 'Dashboard'],
   ] as const)(
-    'links the logo on %s (signed %s) to the explorer',
-    async (path, who, bar) => {
+    'links the logo on %s (signed %s, %s pages) to the explorer',
+    async (path, who, pages, bar) => {
       (who === 'in' ? openAndSignedIn : openAndSignedOut)();
       render(
         <MemoryRouter initialEntries={[path]}>
-          <App accountPages="own" />
+          <App accountPages={pages} />
         </MemoryRouter>,
       );
 
@@ -2553,7 +2767,8 @@ describe('navigation off the landing page', () => {
       </MemoryRouter>,
     );
 
-    await screen.findByRole('navigation', { name: 'Primary' });
+    // Once the bar is drawn, the hub's since 2026-11-19: the page has settled.
+    await screen.findByRole('navigation', { name: HUB_BAR_SIGNED_OUT });
     expect(
       screen
         .getAllByRole('link', { name: /rumble fish/i })
@@ -2584,6 +2799,16 @@ describe('navigation off the landing page', () => {
       const navigate = useNavigate();
       return <button onClick={() => navigate(-1)}>test: back</button>;
     }
+    /**
+     * A push to another page of this app, as a router link makes. Its own
+     * links to its other pages are plain ones since 2026-11-19 (the quick
+     * start left for the hub, and the footer's link to the privacy policy is
+     * drawn under the hub's router too), so a test pushes by hand.
+     */
+    function GoTo({ to }: { to: string }) {
+      const navigate = useNavigate();
+      return <button onClick={() => navigate(to)}>test: go</button>;
+    }
 
     // The policy renders its ids a lazy chunk later than the landing does.
     it.each([
@@ -2603,7 +2828,7 @@ describe('navigation off the landing page', () => {
       openAndSignedOut();
       render(
         <MemoryRouter
-          initialEntries={['/#faq', '/quick-start']}
+          initialEntries={['/#faq', '/privacy-policy']}
           initialIndex={1}
         >
           <App />
@@ -2611,7 +2836,8 @@ describe('navigation off the landing page', () => {
         </MemoryRouter>,
       );
       await screen.findByRole('heading', {
-        name: /get your first response in under 5 minutes/i,
+        level: 1,
+        name: /privacy policy/i,
       });
       expect(scrolled).toEqual([]);
 
@@ -2628,16 +2854,17 @@ describe('navigation off the landing page', () => {
       render(
         <MemoryRouter initialEntries={['/']}>
           <App />
+          <GoTo to="/privacy-policy" />
         </MemoryRouter>,
       );
+      // Once the landing page's bar is drawn, the hub's since 2026-11-19.
+      await screen.findByRole('navigation', { name: HUB_BAR_SIGNED_OUT });
       expect(scrollTo).not.toHaveBeenCalled();
 
-      const bar = within(
-        await screen.findByRole('navigation', { name: 'Primary' }),
-      );
-      fireEvent.click(bar.getByRole('link', { name: /^quick start$/i }));
+      fireEvent.click(screen.getByRole('button', { name: 'test: go' }));
       await screen.findByRole('heading', {
-        name: /get your first response in under 5 minutes/i,
+        level: 1,
+        name: /privacy policy/i,
       });
       expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: 'instant' });
     });
@@ -2663,8 +2890,10 @@ describe('navigation off the landing page', () => {
       [KEY_URL]: keyNoKey,
       [USAGE_URL]: usageNoKey,
     });
+    // On the privacy policy, the one page of this app left under that bar: the
+    // quick start, where this was first seen, is the hub's page now.
     render(
-      <MemoryRouter initialEntries={['/quick-start']}>
+      <MemoryRouter initialEntries={['/privacy-policy']}>
         <App />
       </MemoryRouter>,
     );

@@ -85,14 +85,14 @@ const SECTIONS = [
  * handful of fixed snippets does not justify a highlighter in the bundle, and
  * these are design tokens rather than somebody else's theme.
  */
-const KEY = color.accent.violet[400];
-const STR = color.accent.emerald[400];
-const NUM = color.primary[400];
-const MUTED = color.text.tertiary;
-const PLAIN = color.text.secondary;
+export const KEY = color.accent.violet[400];
+export const STR = color.accent.emerald[400];
+export const NUM = color.primary[400];
+export const MUTED = color.text.tertiary;
+export const PLAIN = color.text.secondary;
 
 /** One coloured run. `c` omitted is the plain body colour. */
-const Tok = ({ c = PLAIN, children }: { c?: string; children: ReactNode }) => (
+export const Tok = ({ c = PLAIN, children }: { c?: string; children: ReactNode }) => (
   <Box component="span" sx={{ color: c }}>
     {children}
   </Box>
@@ -114,14 +114,14 @@ const Tok = ({ c = PLAIN, children }: { c?: string; children: ReactNode }) => (
  * its text to `text` — the same shape as `base-path.spec.ts` over the two
  * copies of `BASE_PATH`.
  */
-type Snippet = { text: string; view: ReactNode };
+export type Snippet = { text: string; view: ReactNode };
 
 /**
  * The frame's segmented control above a snippet — cURL / JavaScript / Python
  * / Go. Real tabs (`role="tab"`, arrow keys), because that is what they are:
  * one panel, several views of it.
  */
-function LangTabs<T extends string>({
+export function LangTabs<T extends string>({
   id,
   options,
   value,
@@ -198,7 +198,7 @@ function LangTabs<T extends string>({
 }
 
 /** Tabs plus the card they switch. */
-function SnippetTabs<T extends string>({
+export function SnippetTabs<T extends string>({
   id,
   options,
   snippets,
@@ -1107,7 +1107,7 @@ function Authentication() {
 }
 
 /** The green "Correct" and red "Wrong" boxes under the required header. */
-function Verdict({
+export function Verdict({
   tone,
   label,
   children,
@@ -1260,7 +1260,7 @@ function Response() {
 }
 
 /** The verb pill — the same chip `landing/Endpoints.tsx` draws. */
-function MethodBadge({ method }: { method: Method }) {
+export function MethodBadge({ method }: { method: Method }) {
   const post = method === 'POST';
   return (
     <Box

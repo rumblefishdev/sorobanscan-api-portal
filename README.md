@@ -68,8 +68,8 @@ The hub shows the SorobanScan favicons, the Prices portal's.
 Its code is in `src/prices/`, copied from stellar-prices-api at `7d9e9e70`: `web/portal/src/X`
 is `src/prices/X`, with Prices' names, code style and comments. `src/boot.js` picks the tree by
 the address: `/api/prices-api` and everything under it boots the Prices portal, `/api/login`,
-`/api/dashboard` and everything under the dashboard the sign-in page and dashboard
-(`src/account/`, below), every other address the hub. Each tree brings its own styles, fonts and
+`/api/dashboard`, `/api/quick-start`, `/api/docs` and everything under the last three the sign-in
+page, the dashboard and the two documentation pages (`src/account/`, below), every other address the hub. Each tree brings its own styles, fonts and
 router, so none's reach another. `tsconfig.prices.json` checks `src/prices` with Prices' own
 compiler options, and `src/account` with them, since it is built from Prices' theme and
 components; the hub's `tsconfig.json` leaves both out, and no hub TypeScript file imports from
@@ -325,6 +325,41 @@ off the address. The backend's errors are said in words, with their code.
 `VITE_PRODUCTS`, a build setting, is the comma list of APIs whose tab is open (`prices` unless it
 names others, `prices,x402` once x402 opens); the other tabs show "Coming soon" and don't open.
 
+## The quick start and the API reference
+
+`/api/quick-start/<api>` and `/api/docs/<api>` (`src/account/docs/`) are every API's quick start
+and API reference, one page of each kind with a tab per API (akot, 2026-11-19). They are open to
+everybody and meant to be found, by readers, search engines and agents: nothing on them waits
+for the session, they carry a title, a description and a canonical address of their own, and no
+`noindex`. The bar is the dashboard's; for a visitor who isn't signed in it has "Log in" (to
+`/api/login?from=<api>`) where the account and Sign out would be, and no Dashboard. An address
+that names no API (`/api/quick-start`), a shut tab or an unknown one is replaced by the first
+open tab's, keeping its `#part`.
+
+The Prices portal's landing page and privacy policy are under the same bar (`PageBar` in
+`src/prices/app/app.tsx`), in place of the portal's own bar with Features, Quick Start, FAQ, Sign
+in and Get API Key, which only its old sign-in (`accountPages="own"`) still draws.
+
+They were the Prices portal's own pages. `/api/prices-api/quick-start` and `/api/prices-api/docs`
+now send the browser to `/api/quick-start/prices` and `/api/docs/prices`, and every link on the
+Prices pages names those. Always the tab's address, never the bare one: the explorer answered
+`/api/quick-start` and `/api/docs` with a `301` into the Prices portal, and a browser that kept
+the redirect would be sent round a loop.
+
+The Prices tab shows the Prices portal's quick start (`src/prices/quickstart/`) and its reference,
+which renders the document Prices' API serves. x402's quick start is
+`src/account/docs/X402QuickStart.tsx`, written from the facilitator's README and example seller in
+`rumblefishdev/stellar-x402`. x402's reference renders `public/docs/x402/openapi.json`, served at
+`/api/docs/x402/openapi.json`: a copy of `apps/facilitator/openapi.json` in that repo, to be
+copied again whenever that file changes. The facilitator doesn't serve the document itself yet;
+once it does, the page should read it from there, as Prices' does. Both x402 pages are behind
+`VITE_PRODUCTS`, as its dashboard tab is.
+
+The pages are drawn in the browser, so a reader that runs no scripts (most agents, some crawlers)
+gets the hub's empty HTML at these addresses. What such a reader can use today is the two OpenAPI
+documents, which are plain files: `/api/docs/x402/openapi.json` and
+`/api/prices-api/openapi.json`. Drawing the pages at build time is not done.
+
 ## Putting it on production
 
 Nothing in this repo uploads it, and there is no preview address (the shared sign-in spec's
@@ -336,7 +371,10 @@ production build must name the Prices backend, or the Prices pages reach none:
 The bundle goes by hand to the bucket the product pages are served from, under `api/index.html`
 and `api/assets/` and never under `api/prices-api/`, so the old Prices portal's files stay where
 they are. The explorer's CloudFront then serves `/api`, `/api/`, `/api/assets/*`, `/api/login`,
-`/api/dashboard*`, `/api/privacy-policy` and `/api/prices-api/*` from it; reverting that change
+`/api/dashboard*`, `/api/quick-start*`, `/api/docs*` (x402's OpenAPI document,
+`api/docs/x402/openapi.json`, goes up with the bundle), `/api/privacy-policy` and
+`/api/prices-api/*` from it, and `quick-start` and `docs` leave its list of old Prices routes
+(`PRICES_PORTAL_LEGACY_ROUTES`), which today answers both with a `301`; reverting that change
 brings the old hub and the old Prices portal back at once. The cutover lists the steps before
 and after it; the hub spec's section "Putting it on production" says how the upload is done
 (two `aws s3 sync` runs and an invalidation).

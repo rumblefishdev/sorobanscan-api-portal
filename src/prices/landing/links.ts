@@ -104,7 +104,17 @@ export const OPENAPI_JSON_FILENAME = 'stellar-prices-api-openapi.json';
  * silently opened the raw document.
  */
 export const DOCS_ROUTE = '/docs';
-export const API_REFERENCE = `${ROUTER_BASENAME}${DOCS_ROUTE}`;
+/**
+ * Since 2026-11-19 (akot) the reference is a page of the hub's, one for every
+ * API, with a tab each: `/api/docs/prices`. {@link DOCS_ROUTE} is where it
+ * was, and sends the browser there. Under the bundle's `base`, as
+ * {@link HUB_LOGIN} is, and a plain `href` from this app for the same reason.
+ *
+ * The tab's own address, never the bare `/api/docs`: the explorer answered
+ * that one with a `301` to `/api/prices-api/docs`, and a browser that kept
+ * the redirect would be sent back here and loop.
+ */
+export const API_REFERENCE = `${import.meta.env.BASE_URL}docs/prices`;
 
 /**
  * The quick start — the in-app page built from the Figma `Quick start` frame
@@ -114,7 +124,11 @@ export const API_REFERENCE = `${ROUTER_BASENAME}${DOCS_ROUTE}`;
  * snippets are meant to say once the two are reconciled.
  */
 export const QUICKSTART_ROUTE = '/quick-start';
-export const QUICKSTART = `${ROUTER_BASENAME}${QUICKSTART_ROUTE}`;
+/**
+ * Since 2026-11-19 the quick start is a page of the hub's too,
+ * `/api/quick-start/prices`: see {@link API_REFERENCE}, whose reasons hold.
+ */
+export const QUICKSTART = `${import.meta.env.BASE_URL}quick-start/prices`;
 
 /**
  * The privacy policy — a page of this app (task 0303), rendered from

@@ -34,6 +34,7 @@ import { cardBorder } from '../landing/primitives';
 import { color, font, radius } from '../theme/tokens';
 import {
   apiKeyHeader,
+  bearerScheme,
   deref,
   describe,
   displaySummary,
@@ -1157,7 +1158,46 @@ function VersionChips({ doc }: { doc: OpenApiDocument }) {
   );
 }
 
-function Reference({ doc }: { doc: OpenApiDocument }) {
+/**
+ * Where a reference's document comes from. Prices' is the default; the hub's
+ * documentation pages name another API's (`src/account/docs/DocsPage.tsx`).
+ */
+export type ApiDocument = {
+  /** What the page fetches and renders. */
+  url: string;
+  /**
+   * The same document as a file to save: a same-origin address, since a
+   * browser honours `download` on no other, and the name it is saved under.
+   */
+  download: string;
+  filename: string;
+  /**
+   * Whether `url` is the deployed API's own answer, as Prices' is, or a copy
+   * of the document that ships with this page.
+   */
+  served: boolean;
+};
+
+const PRICES_DOCUMENT: ApiDocument = {
+  url: OPENAPI_JSON,
+  download: OPENAPI_JSON_DOWNLOAD,
+  filename: OPENAPI_JSON_FILENAME,
+  served: true,
+};
+
+/** The page's standfirst, before the link to the raw document. */
+const ledeOf = (source: ApiDocument) =>
+  source.served
+    ? 'Every endpoint, parameter and response, read from the document the API serves.'
+    : 'Every endpoint, parameter and response of the API.';
+
+function Reference({
+  doc,
+  source,
+}: {
+  doc: OpenApiDocument;
+  source: ApiDocument;
+}) {
   const groups = useMemo(() => groupByTag(doc), [doc]);
   const sections = useMemo(() => tocFor(doc, groups), [doc, groups]);
   const rows = useOpenRows();
@@ -1171,6 +1211,7 @@ function Reference({ doc }: { doc: OpenApiDocument }) {
     if (id) document.getElementById(id)?.scrollIntoView?.();
   }, [doc]);
   const header = apiKeyHeader(doc);
+  const bearer = header ? undefined : bearerScheme(doc);
   const baseUrl = doc.servers?.[0]?.url;
   const schemas = Object.entries(doc.components?.schemas ?? {});
 
@@ -1181,8 +1222,7 @@ function Reference({ doc }: { doc: OpenApiDocument }) {
       title="API reference"
       lede={
         <>
-          Every endpoint, parameter and response, read from the document the API
-          serves. The raw{' '}
+          {ledeOf(source)} The raw{' '}
           {/* Saves a file, and the two attributes that make it do so are a
               pair: `download` names the file, and the href must be the
               same-origin copy in this bundle for a browser to honour it at
@@ -1190,13 +1230,14 @@ function Reference({ doc }: { doc: OpenApiDocument }) {
               is still the live `OPENAPI_JSON` — this link is the only place
               the bundled snapshot is used. */}
           <Link
-            href={OPENAPI_JSON_DOWNLOAD}
-            download={OPENAPI_JSON_FILENAME}
+            href={source.download}
+            download={source.filename}
             sx={{ color: color.text.accent }}
           >
             OpenAPI JSON
           </Link>{' '}
-          is the same bytes, for generators and other tooling.
+          is the same {source.served ? 'bytes' : 'document'}, for generators
+          and other tooling.
         </>
       }
     >
@@ -1224,6 +1265,23 @@ function Reference({ doc }: { doc: OpenApiDocument }) {
                 Routes marked with a lock need it on every request. Nothing on
                 this page sends a request; copy one from the quick start.
               </Typography>
+            </>
+          )}
+          {/* A key that travels as a bearer token (x402's): the document's
+              own words say which requests need it, since no route needs it
+              on every request and so none is marked with a lock. */}
+          {bearer && (
+            <>
+              <ValueStrip
+                label="Header"
+                value="Authorization: Bearer YOUR_API_KEY"
+                copyLabel="the header"
+              />
+              {bearer.description && (
+                <Typography variant="body2" sx={{ color: color.text.tertiary }}>
+                  {inline(bearer.description)}
+                </Typography>
+              )}
             </>
           )}
         </Stack>
@@ -1261,16 +1319,14 @@ function Reference({ doc }: { doc: OpenApiDocument }) {
 function Placeholder({
   loaded,
   reload,
+  source,
 }: {
   loaded: Exclude<Loaded, { state: 'ok' }>;
   reload: () => void;
+  source: ApiDocument;
 }) {
   return (
-    <DocPage
-      sections={[]}
-      title="API reference"
-      lede="Every endpoint, parameter and response, read from the document the API serves."
-    >
+    <DocPage sections={[]} title="API reference" lede={ledeOf(source)}>
       {loaded.state === 'loading' ? (
         <Stack
           direction="row"
@@ -1305,7 +1361,7 @@ function Placeholder({
               <Button variant="contained" onClick={reload}>
                 Try again
               </Button>
-              <Link href={OPENAPI_JSON} sx={{ color: color.text.accent }}>
+              <Link href={source.url} sx={{ color: color.text.accent }}>
                 Open the raw document
               </Link>
             </Stack>
@@ -1316,12 +1372,16 @@ function Placeholder({
   );
 }
 
-export function ApiReference() {
-  const { loaded, reload } = useOpenApi(OPENAPI_JSON);
+export function ApiReference({
+  source = PRICES_DOCUMENT,
+}: {
+  source?: ApiDocument;
+}) {
+  const { loaded, reload } = useOpenApi(source.url);
   return loaded.state === 'ok' ? (
-    <Reference doc={loaded.doc} />
+    <Reference doc={loaded.doc} source={source} />
   ) : (
-    <Placeholder loaded={loaded} reload={reload} />
+    <Placeholder loaded={loaded} reload={reload} source={source} />
   );
 }
 

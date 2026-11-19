@@ -78,6 +78,7 @@ export function DashboardPage({ session }: { session: Session }) {
         username={session.username}
         onSignOut={signOut.onSignOut}
         signingOut={signOut.state === "in_flight"}
+        product={selected}
       />
       <Box
         component="main"

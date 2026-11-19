@@ -14,14 +14,14 @@ import { Link as RouterLink } from 'react-router';
 
 import { color, font } from '../theme/tokens';
 import {
+  API_REFERENCE,
   DASHBOARD_ROUTE,
-  DOCS_ROUTE,
   EXPLORER,
   HUB_DASHBOARD,
   HUB_LOGIN,
   LANDING,
-  PRIVACY_POLICY_ROUTE,
-  QUICKSTART_ROUTE,
+  PRIVACY_POLICY,
+  QUICKSTART,
   RUMBLEFISH_CONTACT,
   RUMBLEFISH_SITE,
 } from './links';
@@ -61,7 +61,8 @@ const NAV: readonly (
   | { label: string; to: string; href?: undefined }
 )[] = [
   { label: 'Features', href: '#features' },
-  { label: 'Quick Start', to: QUICKSTART_ROUTE },
+  // A page of the hub's since 2026-11-19 (`QUICKSTART`), so a plain link.
+  { label: 'Quick Start', href: QUICKSTART },
   { label: 'FAQ', href: '#faq' },
 ];
 
@@ -153,7 +154,10 @@ export function Navbar({
   canOfferKey: boolean;
   inPage?: boolean;
 }) {
-  const navHref = (href: string) => (inPage ? href : `${LANDING}${href}`);
+  // Only a section of the landing page (`#faq`) needs the landing's address
+  // in front of it on another page; an address is already one.
+  const navHref = (href: string) =>
+    inPage || !href.startsWith('#') ? href : `${LANDING}${href}`;
   return (
     <Box
       component="nav"
@@ -268,7 +272,10 @@ function MobileMenu({
   /** Same meaning as `Navbar`'s — the drawer holds the same three links. */
   inPage: boolean;
 }) {
-  const navHref = (href: string) => (inPage ? href : `${LANDING}${href}`);
+  // Only a section of the landing page (`#faq`) needs the landing's address
+  // in front of it on another page; an address is already one.
+  const navHref = (href: string) =>
+    inPage || !href.startsWith('#') ? href : `${LANDING}${href}`;
   const [open, setOpen] = useState(false);
   const close = () => setOpen(false);
 
@@ -407,9 +414,9 @@ export function Footer({
     to?: string;
     onClick?: (e: MouseEvent) => void;
   }[] = [
-    // `to`: the API reference is a route of this app (task 0195), and the
-    // same basename argument as the dashboard link below applies.
-    { label: 'Documentation', to: DOCS_ROUTE },
+    // The API reference is a page of the hub's since 2026-11-19
+    // (`API_REFERENCE`), so a plain link from whichever tree draws this.
+    { label: 'Documentation', href: API_REFERENCE },
     // Only where there is a dashboard to reach. While the portal is shut this
     // link would land on `/dashboard`, which sends a visitor with no session
     // straight back to the page they clicked from.
@@ -425,7 +432,9 @@ export function Footer({
         ? [{ label: 'Dashboard', to: DASHBOARD_ROUTE }]
         : []),
     { label: 'Contact', href: RUMBLEFISH_CONTACT },
-    { label: 'Privacy policy', to: PRIVACY_POLICY_ROUTE },
+    // A plain link: the hub's documentation pages draw this footer too, under
+    // a router whose `/privacy-policy` is not this page.
+    { label: 'Privacy policy', href: PRIVACY_POLICY },
     // The only way to withdraw consent once given, so it sits on every page.
     // `#` + preventDefault keeps it a real, focusable anchor like its
     // neighbours.
