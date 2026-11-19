@@ -303,8 +303,12 @@ keys" (`src/prices/privacy/privacy-policy-x402.md`), only in a build with `VITE_
 
 `/api/login` and `/api/dashboard` (`src/account/`) are the hub's one sign-in and one dashboard,
 drawn as the Prices portal's: its theme, login card and dashboard panels. The hub's top bar links
-to them. `/login`'s button goes to the backend's `auth/login`, which comes back to `/dashboard`,
-or to `/login?signin=<reason>` with the refusal in Prices' words. Without the backend's settings
+to them. `/login`'s button opens the backend's `auth/login` in a second window, as the Prices portal's
+does (akot, 2026-11-19): the page says it is waiting, the window comes back to `/dashboard` or to
+`/login?signin=<reason>`, hands that outcome to the page and shuts (`bridgeOAuthPopup` in
+`src/boot.js`), and the page asks `/me` again before it goes to the dashboard, or shows the refusal
+in Prices' words. Where the browser opens no second window the button is a plain link and the same
+round trip runs in the tab. "Get API Key" stays in the tab: its round trip shows no consent screen. Without the backend's settings
 `/login` says sign-in is not configured. When `/me` fails or doesn't answer in 10 seconds, both
 pages say they could not check the sign-in, with "Try again", rather than treat the visitor as
 signed out. The dashboard has a tab per API, `/api/dashboard/<api>`; an address naming a tab that

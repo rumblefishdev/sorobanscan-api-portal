@@ -9,7 +9,7 @@ import Link from "@mui/material/Link";
 import Stack from "@mui/material/Stack";
 import Typography from "@mui/material/Typography";
 import { alpha } from "@mui/material/styles";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from "react";
 import { Navigate, Link as RouterLink, useSearchParams } from "react-router";
 
 import { DiscordIcon } from "../prices/landing/DiscordIcon";
@@ -27,6 +27,7 @@ import {
   STELLAR_DISCORD_INVITE,
   STELLAR_DISCORD_SERVER,
 } from "../prices/landing/links";
+import { onOAuthPopupMessage, openOAuthPopup } from "../prices/landing/oauthPopup";
 import { cardBorder } from "../prices/landing/primitives";
 import { theme } from "../prices/theme/theme";
 import { color, font, radius } from "../prices/theme/tokens";
@@ -37,12 +38,15 @@ import { SIGN_IN_URL, type Session } from "./session";
  * `/login`: the Prices portal's sign-in card (its `LoginView` in `src/prices/app/app.tsx`), for the
  * hub's one sign-in. What differs from Prices' is only what doesn't apply here:
  *
- * - No popup. The button is a plain link to the hub's backend, which sends the browser to Discord
- *   and back to `/dashboard`, or here with `?signin=<reason>`. So the "Redirecting to Discord"
- *   waiting card is gone, and the OAuth error card, which Prices titles the same way, keeps the
- *   ordinary title.
  * - No key on sign-in (spec decision 4): the title, the subtitle and who may sign in are the hub's
- *   words; "What you get" keeps the two of Prices' four that hold for every API.
+ *   words; "What you get" keeps the three of Prices' four that hold for every API.
+ * - The OAuth error card, which Prices titles "Redirecting to Discord", keeps the ordinary title.
+ *
+ * The round trip through Discord runs in a second window, as Prices' does (akot, 2026-11-19;
+ * `usePopupSignIn`): this page stays, says it is waiting, and takes the outcome from the window
+ * when it comes back. Where the browser allows no second window the button is the plain link it
+ * always was: the backend sends this tab to Discord and back to `/dashboard`, or here with
+ * `?signin=<reason>`.
  *
  * Every refusal is Prices' wording for the same outcome, word for word, and so are the controls
  * that go with it.
@@ -52,11 +56,26 @@ import { SIGN_IN_URL, type Session } from "./session";
 const LOGIN_TITLE = "Sign in";
 const LOGIN_SUBTITLE = "One Discord sign-in for every Soroban Scan API.";
 
-/** Prices' "What you get", less the two about its own key and quota. */
+/**
+ * Prices' "What you get", less the one about its own quota. Its first holds here too (akot,
+ * 2026-11-19): sign-in issues no key, but the dashboard's "Get API Key" does at once.
+ */
 const BENEFITS = [
+  { text: "Instant API key — no waiting", kind: "check" },
   { text: "Usage dashboard and key management", kind: "check" },
   { text: "Discord account is your identity", kind: "discord" },
 ] as const;
+
+/**
+ * How long a shut window's verdict waits, so the window's own word can still overtake it: the
+ * window posts where it landed and closes in the same breath, and the watch may see it shut
+ * before the message is delivered. Prices' value (`POPUP_MESSAGE_GRACE_MS`).
+ */
+const POPUP_MESSAGE_GRACE_MS = 1500;
+/** How often the page asks the backend whether the window's sign-in is done. Prices' value. */
+const POPUP_POLL_MS = 1500;
+/** How often the page looks whether the window is still open. Prices' value. */
+const POPUP_CLOSED_WATCH_MS = 500;
 
 /** Why a sign-in ended without a session, as the hub's backend names it in `?signin=`. */
 const REFUSALS = ["cancelled", "failed", "not_member", "pending_rules", "unknown"] as const;
@@ -113,9 +132,128 @@ function useDashboardFrom(): string {
     : "/dashboard";
 }
 
-export function LoginPage({ session }: { session: Session }) {
-  const outcome = useSigninOutcome(session.state === "signed_in");
+/**
+ * The sign-in in a second window, as the Prices portal's (`LoginView` in
+ * `src/prices/app/app.tsx`, whose reasons its comments hold). `onSignInClick` goes on a link to
+ * {@link SIGN_IN_URL}: it opens that address in a window of its own and takes the click only once
+ * the window is open, so a blocked window, or a click that asks for a tab, is the plain link.
+ *
+ * While `waiting`, three things can end the wait:
+ *
+ * - the window's own word. It lands where the backend sends it, `/dashboard` or
+ *   `/login?signin=<reason>`, where `src/boot.js` posts the address's query to this page and
+ *   shuts the window (`bridgeOAuthPopup`). A refusal is shown as it is; anything else is checked
+ *   with the backend, since a message is no proof of a session;
+ * - the backend saying somebody is signed in, asked every {@link POPUP_POLL_MS}: the window's
+ *   word can be lost (an opener the browser cut off), and the visitor would wait for good;
+ * - the window being shut. After {@link POPUP_MESSAGE_GRACE_MS}, so its word can still arrive,
+ *   the backend is asked: a visitor who finished and shut the window goes on signed in, any other
+ *   is told the sign-in did not complete.
+ *
+ * `checkSignedIn` replaces the page's session only when somebody is signed in, and the page then
+ * goes to the dashboard by itself. `attempted` says a window was opened on this visit: its
+ * `outcome` then stands in for the one the address came with.
+ */
+function usePopupSignIn(checkSignedIn: () => Promise<boolean>) {
+  const [waiting, setWaiting] = useState(false);
+  const [attempted, setAttempted] = useState(false);
+  const [outcome, setOutcome] = useState<Refusal | null>(null);
+  const popup = useRef<Window | null>(null);
+
+  useEffect(() => {
+    if (!waiting) return;
+    /** The wait is on: nothing has ended it yet. */
+    let live = true;
+    /** The card is on screen: an answer that comes after it left changes nothing. */
+    let shown = true;
+    let grace: ReturnType<typeof setTimeout> | undefined;
+
+    const stop = () => {
+      live = false;
+      clearTimeout(grace);
+      clearInterval(poll);
+      clearInterval(watchClosed);
+      stopListening();
+    };
+    const end = (refusal: Refusal | null) => {
+      if (!shown) return;
+      setOutcome(refusal);
+      setWaiting(false);
+    };
+    /** The window is done, by its word or by being shut: the backend says how it went. */
+    const confirm = () => {
+      if (!live) return;
+      stop();
+      void checkSignedIn().then((signedIn) => end(signedIn ? null : "failed"));
+    };
+
+    const stopListening = onOAuthPopupMessage(({ search }) => {
+      if (!live) return;
+      const value = new URLSearchParams(search).get("signin");
+      if (!isRefusal(value)) return confirm();
+      stop();
+      end(value);
+    });
+    const poll = setInterval(() => {
+      // Not during the grace: the shut window's verdict is already on its way.
+      if (!live || grace !== undefined) return;
+      void checkSignedIn().then((signedIn) => {
+        if (!signedIn || !live) return;
+        stop();
+        end(null);
+      });
+    }, POPUP_POLL_MS);
+    const watchClosed = setInterval(() => {
+      if (!live || grace !== undefined || !popup.current?.closed) return;
+      grace = setTimeout(confirm, POPUP_MESSAGE_GRACE_MS);
+    }, POPUP_CLOSED_WATCH_MS);
+
+    return () => {
+      shown = false;
+      stop();
+    };
+  }, [waiting, checkSignedIn]);
+
+  const onSignInClick = (event: MouseEvent<HTMLAnchorElement>) => {
+    // A middle click or a modified one asks for a tab of its own: the browser's to answer.
+    if (
+      event.defaultPrevented ||
+      event.button !== 0 ||
+      event.metaKey ||
+      event.ctrlKey ||
+      event.shiftKey ||
+      event.altKey
+    ) {
+      return;
+    }
+    const opened = openOAuthPopup(SIGN_IN_URL);
+    if (!opened) return;
+    event.preventDefault();
+    popup.current = opened;
+    setAttempted(true);
+    setOutcome(null);
+    setWaiting(true);
+  };
+
+  return { waiting, attempted, outcome, onSignInClick };
+}
+
+type OnSignInClick = (event: MouseEvent<HTMLAnchorElement>) => void;
+
+export function LoginPage({
+  session,
+  checkSignedIn,
+}: {
+  session: Session;
+  /** Asks the backend again who is signed in (`useSessionControl`). */
+  checkSignedIn: () => Promise<boolean>;
+}) {
+  const fromAddress = useSigninOutcome(session.state === "signed_in");
   const dashboard = useDashboardFrom();
+  const signIn = usePopupSignIn(checkSignedIn);
+  // A window opened on this visit has the last word: a sign-in that worked there must not be
+  // answered with the refusal an earlier one left in the address.
+  const outcome = signIn.attempted ? signIn.outcome : fromAddress;
 
   // A signed-in visitor has nothing to do here, unless a round trip has just come back refused.
   // An issue's, left open past the 10 minutes its two halves last, ends here as a sign-in's
@@ -140,8 +278,10 @@ export function LoginPage({ session }: { session: Session }) {
           <SessionFailedCard session={session} />
         ) : session.state === "signed_in" ? (
           <StillSignedInCard username={session.username} dashboard={dashboard} />
+        ) : signIn.waiting ? (
+          <WaitingCard />
         ) : (
-          <SignInCard outcome={outcome} />
+          <SignInCard outcome={outcome} onSignInClick={signIn.onSignInClick} />
         )}
       </LoginSection>
     </>
@@ -265,8 +405,54 @@ function BackToLanding() {
   );
 }
 
+/**
+ * The card while the round trip runs in the second window: Prices' "Redirecting to Discord"
+ * screen, word for word. "click here" is the same sign-in in this tab, for a visitor whose window
+ * never showed.
+ */
+function WaitingCard() {
+  return (
+    <LoginCard
+      title="Redirecting to Discord"
+      titleComponent="h1"
+      subtitle="A new window will open for you to authorize with Discord."
+    >
+      <Callout variant="discord" title="Discord authorization window opened.">
+        Complete the sign-in there to continue. If nothing opened, <a href={SIGN_IN_URL}>click here</a>.
+      </Callout>
+      <Stack role="status" spacing={1.5} alignItems="center" sx={{ py: 2 }}>
+        {/* Prices' spinner: an arc over a full ring, which MUI draws as two. */}
+        <Box sx={{ position: "relative", display: "inline-flex" }}>
+          <CircularProgress
+            aria-hidden
+            variant="determinate"
+            value={100}
+            size={44}
+            thickness={3}
+            sx={{ color: alpha(color.stroke.default, 0.45) }}
+          />
+          <CircularProgress size={44} thickness={3} sx={{ position: "absolute", left: 0 }} />
+        </Box>
+        <Typography variant="body1" color="text.primary">
+          Waiting for Discord…
+        </Typography>
+        <Typography variant="body2" sx={{ color: color.text.tertiary }}>
+          This page will update automatically.
+        </Typography>
+      </Stack>
+    </LoginCard>
+  );
+}
+
 /** The card for a signed-out visitor, with the refusal they came back with, if any. */
-function SignInCard({ outcome }: { outcome: Refusal | null }) {
+function SignInCard({
+  outcome,
+  onSignInClick,
+}: {
+  outcome: Refusal | null;
+  /** Opens the sign-in in a second window (`usePopupSignIn`). */
+  onSignInClick: OnSignInClick;
+}) {
   const [switching, setSwitching] = useState(false);
 
   // Prices merges the two into one "OAuth error" screen (Adam, 2026-08-26); the backend still
@@ -285,7 +471,9 @@ function SignInCard({ outcome }: { outcome: Refusal | null }) {
             if the session timed out.
           </p>
         </Callout>
-        <DiscordButton href={SIGN_IN_URL}>Try again with Discord</DiscordButton>
+        <DiscordButton href={SIGN_IN_URL} onClick={onSignInClick}>
+          Try again with Discord
+        </DiscordButton>
       </LoginCard>
     );
   }
@@ -329,7 +517,7 @@ function SignInCard({ outcome }: { outcome: Refusal | null }) {
             Join Stellar Discord
           </DiscordButton>
         )}
-        {pendingRules && <SignInAgain href={SIGN_IN_URL} />}
+        {pendingRules && <SignInAgain href={SIGN_IN_URL} onClick={onSignInClick} />}
         <TryDifferentAccount onClick={() => setSwitching(true)} />
         {switching && <SwitchAccountDialog onClose={() => setSwitching(false)} />}
       </LoginCard>
@@ -363,7 +551,9 @@ function SignInCard({ outcome }: { outcome: Refusal | null }) {
         <a href={STELLAR_DISCORD_INVITE}>Stellar Developers Discord</a>, with its membership
         screening cleared (the server&apos;s rules accepted).
       </Typography>
-      <DiscordButton href={SIGN_IN_URL}>Sign in with Discord</DiscordButton>
+      <DiscordButton href={SIGN_IN_URL} onClick={onSignInClick}>
+        Sign in with Discord
+      </DiscordButton>
       <LabelledRule>What you get</LabelledRule>
       <Benefits items={BENEFITS} />
     </LoginCard>
@@ -372,21 +562,24 @@ function SignInCard({ outcome }: { outcome: Refusal | null }) {
 
 /*
  * The controls below are Prices' (`src/prices/app/app.tsx`), which keeps them private to its
- * `LoginView`: copied, less the popup they open there.
+ * `LoginView`: copied.
  */
 
 /**
  * The card's primary control, in Discord's blurple. Always an `<a>`: a sign-in is a top-level
- * navigation, and the two refusal buttons send the visitor to discord.com in a new tab.
+ * navigation, in this tab when no second window opens, and the two refusal buttons send the
+ * visitor to discord.com in a new tab.
  */
 function DiscordButton({
   href,
   target,
+  onClick,
   children,
 }: {
   href: string;
   /** `rel` follows from it, since `noopener` is not optional on a `_blank`. */
   target?: "_blank";
+  onClick?: OnSignInClick;
   children: ReactNode;
 }) {
   return (
@@ -394,6 +587,7 @@ function DiscordButton({
       component="a"
       href={href}
       target={target}
+      onClick={onClick}
       rel={target === "_blank" ? "noopener noreferrer" : undefined}
       variant="contained"
       fullWidth
@@ -411,11 +605,12 @@ function DiscordButton({
 }
 
 /** `pending_rules`' way back in: the same account, once the rules are accepted. */
-function SignInAgain({ href }: { href: string }) {
+function SignInAgain({ href, onClick }: { href: string; onClick: OnSignInClick }) {
   return (
     <Button
       component="a"
       href={href}
+      onClick={onClick}
       fullWidth
       variant="outlined"
       data-testid="sign-in-again"
