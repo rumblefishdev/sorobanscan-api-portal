@@ -239,3 +239,23 @@ it("has the design's footer", () => {
   for (const name of ["Soroban Scan", "Prices API", "x402 Facilitator", "GitHub"])
     expect(within(footer).getByRole("link", { name })).toBeTruthy();
 });
+
+// A browser jumps to an address's `#part` only if the part exists when the page loads, and this
+// page draws its parts after that: `/api/#products`, opened from another page or pasted, stayed at
+// the top (akot, 2026-11-19).
+it("scrolls to the part its address names when it opens", () => {
+  const scrolled: string[] = [];
+  const prototype = Element.prototype as { scrollIntoView?: () => void };
+  prototype.scrollIntoView = function (this: Element) {
+    scrolled.push(this.id);
+  };
+  try {
+    renderAt("/api/#products").unmount();
+    expect(scrolled).toEqual(["products"]);
+    // No part named, a part the page doesn't have, a malformed escape: nothing moves, nothing breaks.
+    for (const path of ["/api/", "/api/#nothing-here", "/api/#%E0%A4%A"]) renderAt(path).unmount();
+    expect(scrolled).toEqual(["products"]);
+  } finally {
+    delete prototype.scrollIntoView;
+  }
+});
