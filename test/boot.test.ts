@@ -33,13 +33,26 @@ describe("isPricesPath", () => {
 });
 
 describe("isAccountPath", () => {
-  it.each(["/api/login", "/api/dashboard", "/api/dashboard/prices", "/api/dashboard/x402"])(
+  it.each([
+    "/api/login",
+    "/api/dashboard",
+    "/api/dashboard/prices",
+    "/api/dashboard/x402",
+    "/api/quick-start",
+    "/api/quick-start/prices",
+    "/api/docs",
+    "/api/docs/x402",
+  ])(
     "boots the account pages for %s",
     (p) => expect(isAccountPath(p, "/api/")).toBe(true),
   );
   it.each([
     "/api/loginX",
     "/api/dashboardX",
+    "/api/quick-startX",
+    "/api/docsX",
+    "/api/prices-api/quick-start",
+    "/api/prices-api/docs",
     "/api/",
     "/api",
     "/api/prices-api/login",

@@ -78,7 +78,6 @@ import { Faq } from '../landing/Faq';
 import { Features } from '../landing/Features';
 import { FinalCta } from '../landing/FinalCta';
 import { HeroSection } from '../landing/Hero';
-import { QuickStart } from '../quickstart/QuickStart';
 import { SelfService } from '../landing/SelfService';
 import { UseCases } from '../landing/UseCases';
 import { ArrowBadge } from '../landing/primitives';
@@ -91,6 +90,7 @@ import SwitchAccountRoundedIcon from '@mui/icons-material/SwitchAccountRounded';
 import SyncProblemRoundedIcon from '@mui/icons-material/SyncProblemRounded';
 
 import {
+  API_REFERENCE,
   HUB_DASHBOARD,
   HUB_LOGIN,
   LOGIN_ANCHOR,
@@ -3117,13 +3117,16 @@ function PortalStatus({ probe }: { probe: Probe }) {
 function LandingPage({
   probe,
   canOfferKey,
+  bar,
 }: {
   probe: Probe;
   canOfferKey: boolean;
+  /** The bar over the page: the hub's ({@link PageBar}), or this portal's own. */
+  bar: ReactNode;
 }) {
   return (
     <>
-      <Navbar canOfferKey={canOfferKey} />
+      {bar}
       <Box component="main">
         {/* One section, one screen: the hero and the trust band together
             fill the viewport under the navbar. See `HeroSection`. */}
@@ -3235,7 +3238,13 @@ type Gate = {
  * visitor was before signing in rather than to a `/` that bounces them
  * straight forward again.
  */
-function RootRoute({ gate }: { gate: Gate }) {
+function RootRoute({
+  gate,
+  accountPages,
+}: {
+  gate: Gate;
+  accountPages: AccountPages;
+}) {
   const location = useLocation();
   const canOfferKey = gate.open;
 
@@ -3261,7 +3270,22 @@ function RootRoute({ gate }: { gate: Gate }) {
     }
   }
 
-  return <LandingPage probe={gate.probe} canOfferKey={canOfferKey} />;
+  return (
+    <LandingPage
+      probe={gate.probe}
+      canOfferKey={canOfferKey}
+      bar={
+        // The hub's bar, as on its dashboard (akot, 2026-11-19): Quick start,
+        // OpenAPI Docs and Log in, or the account's own. With this portal's
+        // own sign-in (`AccountPages`), its own bar as before.
+        accountPages === 'hub' ? (
+          <PageBar gate={gate} current="landing" />
+        ) : (
+          <Navbar canOfferKey={canOfferKey} />
+        )
+      }
+    />
+  );
 }
 
 /**
@@ -3522,15 +3546,16 @@ type HubScope = {
 };
 
 /**
- * The bar over the quick start, the API reference and the privacy policy.
+ * The bar over the landing page and the privacy policy.
  *
  * Signed in to the hub, it is the hub's bar, the dashboard's own component
  * (`AccountNavbar`): the dashboard's "Quick start" and "OpenAPI Docs" open
  * these pages, and the bar stays the one they were opened from (akot,
  * 2026-11-18), Sign out included. Without a hub session (signed out, no
- * sign-in configured, or the hub unable to say) it is this portal's bar as
- * before: the signed-in one for a session on Prices' old backend, the
- * landing's otherwise.
+ * sign-in configured, or the hub unable to say) it is still the hub's bar,
+ * with "Log in" for the account (akot, 2026-11-19), so every page of the APIs
+ * has the one bar; only a session on Prices' old backend gets this portal's
+ * signed-in bar, as before.
  *
  * While the hub is asked, the bar is drawn empty, the wordmark alone: the
  * dashboard draws no bar until it knows, so neither bar's links flash up for
@@ -3542,7 +3567,7 @@ function PageBar({
   current,
 }: {
   gate: Gate;
-  current: Exclude<AccountNavbarPage, 'dashboard'>;
+  current: Extract<AccountNavbarPage, 'landing' | 'privacy-policy'>;
 }) {
   const { session: hub, signOut } = useOutletContext<HubScope>();
 
@@ -3570,16 +3595,16 @@ function PageBar({
   const username = signedIn
     ? (gate.session as { state: 'ok'; session: PortalSession }).session.username
     : undefined;
-  return signedIn ? (
+  return signedIn && current !== 'landing' ? (
     <DashboardNavbar
       username={username}
       onSignOut={gate.onSignOut}
       current={current}
     />
   ) : (
-    // `inPage={false}`: the bar's three links name sections of the LANDING
-    // page, which none of these is.
-    <Navbar canOfferKey={gate.open} inPage={false} />
+    // Nobody is signed in to the hub, or the hub can't say: its bar with
+    // "Log in", as on the quick start and the API reference.
+    <AccountNavbar current={current} visitor="signed_out" />
   );
 }
 
@@ -3632,35 +3657,6 @@ function PageFooter({ gate }: { gate: Gate }) {
   );
 }
 
-/**
- * `/quick-start` — the guide, reachable from the signed-in bars and from the
- * landing page's docs cards alike. It needs no session: it is documentation,
- * and a visitor deciding whether to sign in is exactly who should read it.
- * The bar it gets depends on who is looking ({@link PageBar}), with "Quick
- * start" underlined in a signed-in one.
- */
-function QuickStartRoute({ gate }: { gate: Gate }) {
-  const rateLimit =
-    gate.probe.state === 'ok'
-      ? gate.probe.config.rate_limit_per_second
-      : undefined;
-
-  return (
-    <>
-      <PageBar gate={gate} current="quick-start" />
-      <QuickStart rateLimit={rateLimit} />
-      <PageFooter gate={gate} />
-    </>
-  );
-}
-
-/**
- * The API reference, as a chunk of its own (task 0195). Its renderer and the
- * OpenAPI parser it needs stay out of the bundle a first visit pays for — the
- * landing page links to `/docs` but most visitors never open it. It is a small
- * chunk; the split is for the landing page's sake, not the reference's.
- */
-const ApiReference = lazy(() => import('../docs/ApiReference'));
 // The policy's text rides in its own chunk, like the reference: a visitor who
 // never opens it never downloads it.
 const PrivacyPolicy = lazy(() => import('../privacy/PrivacyPolicy'));
@@ -3679,25 +3675,6 @@ function PageLoading({ label }: { label: string }) {
     >
       <CircularProgress size={28} aria-label={label} />
     </Stack>
-  );
-}
-
-/**
- * `/docs` — the API reference, the live OpenAPI document rendered in the
- * portal's own pieces (task 0195). Documentation like the quick start: no
- * session needed, and the bar depends on who is looking. The document is
- * fetched by the page itself; a spinner covers the chunk on the rare first
- * visit that starts here.
- */
-function DocsRoute({ gate }: { gate: Gate }) {
-  return (
-    <>
-      <PageBar gate={gate} current="docs" />
-      <Suspense fallback={<PageLoading label="Loading the API reference" />}>
-        <ApiReference />
-      </Suspense>
-      <PageFooter gate={gate} />
-    </>
   );
 }
 
@@ -3798,10 +3775,12 @@ function useScrollOnNavigate() {
  * round trip's `?signin=` or `?issue=`, isn't carried: those name the old
  * sign-in's outcomes, not the hub's.
  */
-function ToHub({ href }: { href: string }) {
+function ToHub({ href, hash = false }: { href: string; hash?: boolean }) {
   useEffect(() => {
-    window.location.replace(href);
-  }, [href]);
+    // `hash`: a link into a page that moved (`/quick-start#examples`) keeps
+    // its part, which the page it moved to has under the same name.
+    window.location.replace(hash ? href + window.location.hash : href);
+  }, [href, hash]);
   return null;
 }
 
@@ -3839,7 +3818,12 @@ export function App({ accountPages = 'hub' }: { accountPages?: AccountPages }) {
       <title>Stellar Prices API — API keys</title>
       <meta name="robots" content="noindex" />
       <Routes>
-        <Route path="/" element={<RootRoute gate={gate} />} />
+        {accountPages !== 'hub' && (
+          <Route
+            path="/"
+            element={<RootRoute gate={gate} accountPages={accountPages} />}
+          />
+        )}
         <Route
           path="/login"
           element={
@@ -3860,13 +3844,18 @@ export function App({ accountPages = 'hub' }: { accountPages?: AccountPages }) {
             )
           }
         />
-        {/* The pages under `PageBar`, which the hub's bar links to. */}
+        {/* Where the quick start and the API reference were until 2026-11-19:
+            the hub's pages, one for every API, at the Prices tab. */}
+        <Route path="/quick-start" element={<ToHub href={QUICKSTART} hash />} />
+        <Route path="/docs" element={<ToHub href={API_REFERENCE} hash />} />
+        {/* The pages under `PageBar`. */}
         <Route element={<HubSessionScope />}>
-          <Route
-            path="/quick-start"
-            element={<QuickStartRoute gate={gate} />}
-          />
-          <Route path="/docs" element={<DocsRoute gate={gate} />} />
+          {accountPages === 'hub' && (
+            <Route
+              path="/"
+              element={<RootRoute gate={gate} accountPages={accountPages} />}
+            />
+          )}
           <Route
             path="/privacy-policy"
             element={<PrivacyPolicyRoute gate={gate} />}

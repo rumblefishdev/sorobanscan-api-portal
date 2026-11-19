@@ -14,14 +14,17 @@ export function isPricesPath(pathname, base) {
 }
 
 /**
- * Whether `pathname` is one of the account pages, every product's sign-in and dashboard:
- * `${base}login`, `${base}dashboard` or anything under the dashboard (a product's tab).
+ * Whether `pathname` is one of the account pages, every product's: the sign-in, `${base}login`,
+ * and the dashboard, the quick start and the API reference, each with anything under it (a
+ * product's tab, and under `docs` the product's OpenAPI document, which is a file and never
+ * reaches this page).
  */
 export function isAccountPath(pathname, base) {
-  const dashboard = `${base}dashboard`;
-  return (
-    pathname === `${base}login` || pathname === dashboard || pathname.startsWith(`${dashboard}/`)
-  );
+  if (pathname === `${base}login`) return true;
+  return ["dashboard", "quick-start", "docs"].some((page) => {
+    const address = `${base}${page}`;
+    return pathname === address || pathname.startsWith(`${address}/`);
+  });
 }
 
 // Before anything mounts: when this document is the Prices portal's Discord sign-in popup, its

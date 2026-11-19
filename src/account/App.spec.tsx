@@ -599,13 +599,14 @@ describe("/dashboard", () => {
     renderAt("/api/dashboard");
     const nav = await screen.findByRole("navigation", { name: "Dashboard" });
     const dashboard = within(nav).getByRole("link", { name: "Dashboard" });
-    expect(dashboard.getAttribute("href")).toBe("/api/dashboard");
+    // Each of the bar's links keeps to the open tab's API.
+    expect(dashboard.getAttribute("href")).toBe("/api/dashboard/prices");
     expect(dashboard.getAttribute("aria-current")).toBe("page");
     expect(within(nav).getByRole("link", { name: "Quick start" }).getAttribute("href")).toBe(
-      "/api/prices-api/quick-start",
+      "/api/quick-start/prices",
     );
     expect(within(nav).getByRole("link", { name: "OpenAPI Docs" }).getAttribute("href")).toBe(
-      "/api/prices-api/docs",
+      "/api/docs/prices",
     );
     expect(within(nav).getByText("nelly")).toBeTruthy();
     expect(within(nav).getByRole("button", { name: "Sign out" })).toBeTruthy();

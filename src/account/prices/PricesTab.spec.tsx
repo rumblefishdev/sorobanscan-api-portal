@@ -645,7 +645,7 @@ describe("the Prices tab", () => {
     const key = await card("Your API Key is ready");
     expect(within(key).getByRole("button", { name: "Copy key" })).toBeTruthy();
     expect(within(key).getByRole("link", { name: /View quick start/ }).getAttribute("href")).toBe(
-      "/api/prices-api/quick-start",
+      "/api/quick-start/prices",
     );
     expect(within(key).queryByRole("button", { name: "Regenerate" })).toBeNull();
   });
