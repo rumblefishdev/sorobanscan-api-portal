@@ -302,8 +302,10 @@ keys" (`src/prices/privacy/privacy-policy-x402.md`), only in a build with `VITE_
 ## The sign-in page and the dashboard
 
 `/api/login` and `/api/dashboard` (`src/account/`) are the hub's one sign-in and one dashboard,
-drawn as the Prices portal's: its theme, login card and dashboard panels. The hub's top bar links
-to them. `/login`'s button opens the backend's `auth/login` in a second window, as the Prices portal's
+drawn as the Prices portal's: its theme, login card and dashboard panels. The hub's top bar has
+"Log in" for everybody, signed in or not (akot, 2026-11-19): the sign-in page sends whoever is
+signed in on to the dashboard, so the landing page asks the backend nothing. Beside it the bar
+has "Quick start" and "Docs", which are not the design's. `/login`'s button opens the backend's `auth/login` in a second window, as the Prices portal's
 does (akot, 2026-11-19): the page says it is waiting, the window comes back to `/dashboard` or to
 `/login?signin=<reason>`, hands that outcome to the page and shuts (`bridgeOAuthPopup` in
 `src/boot.js`), and the page asks `/me` again before it goes to the dashboard, or shows the refusal
