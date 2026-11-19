@@ -1,12 +1,11 @@
-import { act, cleanup, render, screen, within } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 
 /**
- * A `fetch` that never answers, as a backend slow to: the top bar asks the hub's backend who is
- * signed in, and a test that isn't about that leaves the question open. It gives up only when the
- * page does, as a real one does on an abort.
+ * A `fetch` that never answers. The page asks no backend anything, and this stands where the
+ * browser's `fetch` would be so that a test can say so.
  */
 const unanswered = (_url: string | URL | Request, init?: RequestInit) =>
   new Promise<Response>((_resolve, reject) => {
@@ -50,6 +49,10 @@ it("has the design's top bar", () => {
     ["Which API?", "#choose"],
     ["How they connect", "#stack"],
     ["FAQ", "#faq"],
+    // Not the design's (akot, 2026-11-19): the two pages open to everybody, where a reader on the
+    // landing page finds them. The first API's tab, never the bare address (`src/links.ts`).
+    ["Quick start", "/api/quick-start/prices"],
+    ["Docs", "/api/docs/prices"],
     ["Explorer", "/"],
   ] as const) expect(within(nav).getByRole("link", { name }).getAttribute("href")).toBe(href);
   // "Log in" took its place in the top bar; the hero keeps its own.
@@ -63,75 +66,19 @@ it("has the design's top bar", () => {
 const topBarLinks = () =>
   within(screen.getByRole("navigation", { name: "Main" })).getAllByRole("link");
 
-/** A `/me` answer: a string body as an HTML page, anything else as JSON. */
-const answer = (status: number, body: unknown) =>
-  typeof body === "string"
-    ? new Response(body, { status, headers: { "content-type": "text/html" } })
-    : Response.json(body, { status });
-
-/** Lets the page take in an answer `fetch` already has: every promise chained on it settles. */
-const settle = () => act(() => new Promise<void>((resolve) => setTimeout(resolve, 0)));
-
-it("asks the hub's backend once who is signed in, with the page's own cookies", () => {
-  renderAt("/api/");
-  expect(fetch).toHaveBeenCalledTimes(1);
-  expect(fetch).toHaveBeenCalledWith(
-    "/api/hub/me",
-    expect.objectContaining({ credentials: "same-origin", headers: { accept: "application/json" } }),
-  );
-});
-
-it("offers Log in, last in the top bar, while it asks", () => {
+// "Log in" for everybody (akot, 2026-11-19): a signed-in visitor used to get "Dashboard" here,
+// which took asking the hub's backend who is signed in. The sign-in page sends whoever is signed
+// in on to the dashboard, so the page asks nothing.
+it("offers Log in, last in the top bar, and asks the backend nothing", () => {
   renderAt("/api/");
   const last = topBarLinks().at(-1)!;
   expect(last.textContent).toBe("Log in");
   expect(last.getAttribute("href")).toBe("/api/login");
   expect(last.className).toBe("btn btn-primary");
-});
-
-it.each([
-  ["says nobody is", () => answer(200, { authenticated: false })],
-  ["isn't set up for sign-in", () => answer(503, { error: "sign_in_not_configured" })],
-  ["fails, whatever its body says", () => answer(500, { authenticated: true })],
-  ["answers with a page, not JSON", () => answer(200, "<!doctype html><title>Soroban Scan</title>")],
-  ["says it in another form", () => answer(200, { authenticated: "true" })],
-  ["can't be reached", () => Promise.reject(new TypeError("fetch failed"))],
-])("offers Log in when the backend %s", async (_, respond) => {
-  vi.mocked(fetch).mockImplementation(async () => respond());
-  renderAt("/api/");
-  await settle();
-  const last = topBarLinks().at(-1)!;
-  expect(last.textContent).toBe("Log in");
-  expect(last.getAttribute("href")).toBe("/api/login");
   expect(topBarLinks().map((a) => a.textContent)).not.toContain("Dashboard");
+  expect(fetch).not.toHaveBeenCalled();
 });
 
-it("offers Dashboard in its place to whoever is signed in", async () => {
-  vi.mocked(fetch).mockImplementation(async () =>
-    answer(200, { authenticated: true, id: "80351110224678912", username: "nelly" }),
-  );
-  renderAt("/api/");
-  const nav = screen.getByRole("navigation", { name: "Main" });
-  const dashboard = await within(nav).findByRole("link", { name: "Dashboard" });
-  expect(dashboard.getAttribute("href")).toBe("/api/dashboard");
-  // The same button as "Log in", so the bar doesn't move when one turns into the other.
-  expect(dashboard.className).toBe("btn btn-primary");
-  expect(topBarLinks().at(-1)).toBe(dashboard);
-  expect(within(nav).queryByRole("link", { name: "Log in" })).toBeNull();
-  // The answer re-renders the bar, which doesn't ask again.
-  expect(fetch).toHaveBeenCalledTimes(1);
-});
-
-it("stops asking when the page goes", () => {
-  const { unmount } = renderAt("/api/");
-  const signal = vi.mocked(fetch).mock.calls[0]?.[1]?.signal;
-  expect(signal?.aborted).toBe(false);
-  unmount();
-  expect(signal?.aborted).toBe(true);
-});
-
-// The stylesheet sizes the hero and its strip together to the first screen, the strip at the
-// bottom: that holds only while the two are one block in <main>, the strip its last part.
 it("keeps the hero and its strip in one block, the strip last", () => {
   renderAt("/api/");
   const hero = screen.getByRole("region", { name: "Stellar data and payments, as APIs" });

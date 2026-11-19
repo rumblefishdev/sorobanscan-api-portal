@@ -1,13 +1,12 @@
 import {
-  ANCHORS, DASHBOARD_URL, EXPLORER_URL, GITHUB_URL, LOGIN_URL, PRICES_API_URL, X402_URL,
+  ANCHORS, DOCS_URL, EXPLORER_URL, GITHUB_URL, LOGIN_URL, PRICES_API_URL, QUICK_START_URL,
+  X402_URL,
 } from "../links";
-import { useSignedIn } from "../session";
 
 export function TopBar() {
-  // "Log in" while the backend is asked too, the common case. One link either way, the same
-  // button, so the bar keeps its height when it turns into "Dashboard"; only the button widens,
-  // by about 30 px for the longer word.
-  const signedIn = useSignedIn();
+  // "Log in" for everybody (akot, 2026-11-19), where a signed-in visitor used to get
+  // "Dashboard": the sign-in page sends whoever is signed in already on to the dashboard, so the
+  // one button serves both, and this page asks the backend nothing.
   return (
     <header className="site-header">
       <nav aria-label="Main" className="wrap">
@@ -23,9 +22,13 @@ export function TopBar() {
           <a href={`#${ANCHORS.choose}`}>Which API?</a>
           <a href={`#${ANCHORS.stack}`}>How they connect</a>
           <a href={`#${ANCHORS.faq}`}>FAQ</a>
+          {/* Not in the design (akot, 2026-11-19): the way from the landing page to the two
+              pages every visitor may read. */}
+          <a href={QUICK_START_URL}>Quick start</a>
+          <a href={DOCS_URL}>Docs</a>
           <a href={EXPLORER_URL}>Explorer</a>
-          <a className="btn btn-primary" href={signedIn ? DASHBOARD_URL : LOGIN_URL}>
-            {signedIn ? "Dashboard" : "Log in"}
+          <a className="btn btn-primary" href={LOGIN_URL}>
+            Log in
           </a>
         </div>
       </nav>
