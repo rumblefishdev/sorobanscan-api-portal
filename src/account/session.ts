@@ -13,8 +13,9 @@ const LOGOUT_URL = `${HUB}auth/logout`;
 export const ME_TIMEOUT_MS = 10_000;
 
 /**
- * Where "Sign in with Discord" goes: the backend sends the browser on to Discord. A plain link,
- * since the round trip is a top-level navigation `fetch` can't make.
+ * Where "Sign in with Discord" goes: the backend sends the browser on to Discord. A link, opened
+ * in a second window where the browser allows one (`LoginPage`), since the round trip is a
+ * top-level navigation `fetch` can't make.
  */
 export const SIGN_IN_URL = `${HUB}auth/login`;
 
@@ -42,6 +43,16 @@ type Answer = Exclude<Session, { state: "failed" }> | { state: "failed"; reason:
  * "Found in review of the local sign-in").
  */
 export function useSession(): Session {
+  return useSessionControl().session;
+}
+
+/**
+ * {@link useSession}, with a way to ask again from outside: `checkSignedIn` asks `/me` once more
+ * and resolves whether somebody is signed in. Only a signed-in answer replaces the session; any
+ * other leaves it as it was, so a sign-in page waiting on a second window can ask as often as it
+ * likes without its card changing under the visitor (`LoginPage`).
+ */
+export function useSessionControl(): { session: Session; checkSignedIn: () => Promise<boolean> } {
   const [answer, setAnswer] = useState<Answer>({ state: "loading" });
   /** Bumped by `retry`: each value is one more ask. */
   const [asked, setAsked] = useState(0);
@@ -67,7 +78,17 @@ export function useSession(): Session {
     setAsked((n) => n + 1);
   }, []);
 
-  return answer.state === "failed" ? { ...answer, retry } : answer;
+  const checkSignedIn = useCallback(async () => {
+    const asking = new AbortController();
+    const deadline = setTimeout(() => asking.abort(), ME_TIMEOUT_MS);
+    const read = await readSession(asking.signal);
+    clearTimeout(deadline);
+    if (read.state !== "signed_in") return false;
+    setAnswer(read);
+    return true;
+  }, []);
+
+  return { session: answer.state === "failed" ? { ...answer, retry } : answer, checkSignedIn };
 }
 
 async function readSession(signal: AbortSignal): Promise<Answer> {

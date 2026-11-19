@@ -117,6 +117,9 @@ describe("/login", () => {
     expect(who.textContent).toMatch(/membership screening/i);
     expect(within(who).getByRole("link", { name: "Stellar Developers Discord" })).toBeTruthy();
     expect(screen.getByText("What you get")).toBeTruthy();
+    // Prices' first promise, kept (akot, 2026-11-19): the key is one press away once signed in.
+    const benefits = screen.getAllByRole("listitem").map((item) => item.textContent);
+    expect(benefits[0]).toBe("Instant API key — no waiting");
     expect(screen.queryByText("OAuth error")).toBeNull();
     expect(screen.getByRole("link", { name: /Back to landing/ }).getAttribute("href")).toBe("/api/");
   });
@@ -355,6 +358,168 @@ describe("/login", () => {
       expect(where).toBe("/dashboard");
     },
   );
+});
+
+/**
+ * The sign-in in a second window, as the Prices portal's (akot, 2026-11-19): the page stays, says
+ * it is waiting, and takes the outcome from the window when it comes back.
+ */
+describe("/login's Discord window", () => {
+  /** What `window.open` hands back: enough of a window for the page to watch. */
+  const fakeWindow = () => ({ closed: false, focus: vi.fn() });
+  const opens = (popup: unknown) =>
+    vi.spyOn(window, "open").mockReturnValue(popup as unknown as Window);
+  /** The window's last word, as `bridgeOAuthPopup` posts it from where the backend left it. */
+  const windowLands = (search: string, origin = window.location.origin) =>
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", { origin, data: { source: "stellar-portal-oauth", search } }),
+      );
+    });
+  const press = async (name: string) => {
+    const link = await screen.findByRole("link", { name });
+    // `fireEvent` answers whether the default went ahead: false once the page took the click.
+    return fireEvent.click(link);
+  };
+
+  /** The same press with the page's timers held, so a test moves the window's watch by hand. */
+  const pressUnderFakeTimers = async (name: string) => {
+    const link = await screen.findByRole("link", { name });
+    vi.useFakeTimers();
+    return fireEvent.click(link);
+  };
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("opens Discord in a second window and says it is waiting", async () => {
+    stubBackend(() => answer(200, SIGNED_OUT));
+    const open = opens(fakeWindow());
+    renderAt("/api/login");
+    const wentAhead = await press("Sign in with Discord");
+    expect(wentAhead).toBe(false);
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(open.mock.calls[0]?.[0]).toBe(SIGN_IN_URL);
+    expect(screen.getByRole("heading", { level: 1, name: "Redirecting to Discord" })).toBeTruthy();
+    expect(screen.getByText("Discord authorization window opened.")).toBeTruthy();
+    expect(screen.getByText("Waiting for Discord…")).toBeTruthy();
+    // The way on for a visitor whose window never showed: the same sign-in, in this tab.
+    expect(screen.getByRole("link", { name: "click here" }).getAttribute("href")).toBe(SIGN_IN_URL);
+    expect(screen.getByRole("link", { name: /Back to landing/ })).toBeTruthy();
+  });
+
+  it("leaves the click to the browser when the window is blocked", async () => {
+    stubBackend(() => answer(200, SIGNED_OUT));
+    opens(null);
+    renderAt("/api/login");
+    const wentAhead = await press("Sign in with Discord");
+    expect(wentAhead).toBe(true);
+    expect(screen.queryByText("Redirecting to Discord")).toBeNull();
+  });
+
+  it("leaves a click that asks for a tab of its own to the browser", async () => {
+    stubBackend(() => answer(200, SIGNED_OUT));
+    const open = opens(fakeWindow());
+    renderAt("/api/login");
+    const link = await screen.findByRole("link", { name: "Sign in with Discord" });
+    expect(fireEvent.click(link, { ctrlKey: true })).toBe(true);
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it("goes to the dashboard once the window comes back signed in", async () => {
+    let me: unknown = SIGNED_OUT;
+    const fetchMock = stubBackend(() => answer(200, me));
+    opens(fakeWindow());
+    renderAt("/api/login?from=prices");
+    await press("Sign in with Discord");
+    me = SIGNED_IN;
+    await windowLands("");
+    await settle();
+    expect(where).toBe("/dashboard/prices");
+    // Asked again, since the window's word alone is no proof of a session.
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/hub/me").length).toBe(2);
+  });
+
+  it("shows the refusal the window came back with", async () => {
+    stubBackend(() => answer(200, SIGNED_OUT));
+    opens(fakeWindow());
+    renderAt("/api/login");
+    await press("Sign in with Discord");
+    await windowLands("?signin=not_member");
+    expect(screen.getByTestId("signin-not-member")).toBeTruthy();
+    expect(screen.queryByText("Waiting for Discord…")).toBeNull();
+  });
+
+  it("says the sign-in failed when the window says it worked and the backend disagrees", async () => {
+    stubBackend(() => answer(200, SIGNED_OUT));
+    opens(fakeWindow());
+    renderAt("/api/login");
+    await press("Sign in with Discord");
+    await windowLands("");
+    await settle();
+    expect(screen.getByTestId("signin-failed")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "Try again with Discord" })).toBeTruthy();
+  });
+
+  it("ignores a message from another origin", async () => {
+    stubBackend(() => answer(200, SIGNED_OUT));
+    opens(fakeWindow());
+    renderAt("/api/login");
+    await press("Sign in with Discord");
+    await windowLands("?signin=not_member", "https://elsewhere.example");
+    expect(screen.getByText("Waiting for Discord…")).toBeTruthy();
+  });
+
+  it("says the sign-in did not complete when the window is shut without a word", async () => {
+    stubBackend(() => answer(200, SIGNED_OUT));
+    const popup = fakeWindow();
+    opens(popup);
+    renderAt("/api/login");
+    await pressUnderFakeTimers("Sign in with Discord");
+    popup.closed = true;
+    await act(() => vi.advanceTimersByTimeAsync(5000));
+    expect(screen.getByTestId("signin-failed")).toBeTruthy();
+  });
+
+  it("goes to the dashboard when the window is shut after a sign-in that worked", async () => {
+    let me: unknown = SIGNED_OUT;
+    stubBackend(() => answer(200, me));
+    const popup = fakeWindow();
+    opens(popup);
+    renderAt("/api/login?from=prices");
+    await pressUnderFakeTimers("Sign in with Discord");
+    me = SIGNED_IN;
+    popup.closed = true;
+    await act(() => vi.advanceTimersByTimeAsync(5000));
+    expect(where).toBe("/dashboard/prices");
+  });
+
+  it("goes to the dashboard when the backend says signed in though the window said nothing", async () => {
+    let me: unknown = SIGNED_OUT;
+    stubBackend(() => answer(200, me));
+    opens(fakeWindow());
+    renderAt("/api/login?from=prices");
+    await pressUnderFakeTimers("Sign in with Discord");
+    await act(() => vi.advanceTimersByTimeAsync(2000));
+    expect(screen.getByText("Waiting for Discord…")).toBeTruthy();
+    me = SIGNED_IN;
+    await act(() => vi.advanceTimersByTimeAsync(2000));
+    expect(where).toBe("/dashboard/prices");
+  });
+
+  it("forgets the address's refusal once a new sign-in works", async () => {
+    let me: unknown = SIGNED_OUT;
+    stubBackend(() => answer(200, me));
+    opens(fakeWindow());
+    renderAt("/api/login?signin=failed&from=prices");
+    await press("Try again with Discord");
+    me = SIGNED_IN;
+    await windowLands("");
+    await settle();
+    expect(where).toBe("/dashboard/prices");
+    expect(screen.queryByTestId("still-signed-in")).toBeNull();
+  });
 });
 
 describe("/dashboard", () => {
