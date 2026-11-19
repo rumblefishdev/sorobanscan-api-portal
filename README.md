@@ -38,6 +38,14 @@ Both `pnpm dev` and `pnpm preview` send the Prices backend's paths to Prices' pr
 (see "The Prices portal" below) and serve the hub's own backend themselves (see "The hub's
 backend"), so the browser sees one origin.
 
+The x402 Facilitator's page, `/api/x402-facilitator/`, is another repo's
+(`apps/portal-web` in `rumblefishdev/stellar-x402`), and production serves it from its own
+bundle. Both commands send that address to the page's own dev server, `http://localhost:5174`
+unless `DEV_X402_PAGE_TARGET` names another (set to nothing, the address is the hub's again):
+run `pnpm --filter @stellar-x402/portal-web dev` in that repo beside this server, and the hub's
+links to the x402 Facilitator open its page. With nothing listening there, the address answers
+Vite's proxy error.
+
 ## The prefix: `VITE_BASE_PATH`
 
 The bundle is built for one prefix, `/api/` unless `VITE_BASE_PATH` says another
