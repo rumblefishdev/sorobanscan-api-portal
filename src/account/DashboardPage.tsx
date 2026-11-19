@@ -1,21 +1,19 @@
 import Box from "@mui/material/Box";
 import Container from "@mui/material/Container";
 import Stack from "@mui/material/Stack";
-import Tab from "@mui/material/Tab";
-import Tabs from "@mui/material/Tabs";
 import Typography from "@mui/material/Typography";
 import { alpha } from "@mui/material/styles";
 import { Navigate, useNavigate, useParams } from "react-router";
 
 import { DashboardCard } from "../prices/landing/DashboardPanel";
 import { LoginSection } from "../prices/landing/LoginSection";
-import { cardBorder } from "../prices/landing/primitives";
-import { color, font, radius } from "../prices/theme/tokens";
+import { color } from "../prices/theme/tokens";
 import { AccountNavbar, SignOutFailed } from "./AccountNavbar";
 import { CheckingCard, SessionFailedCard } from "./LoginPage";
 import { PricesTab } from "./prices/PricesTab";
 import { X402Tab } from "./x402/X402Tab";
-import { enabledProducts, PRODUCT_NAME, PRODUCTS, type Product } from "./products";
+import { ProductTabs, panelId, tabId } from "./ProductTabs";
+import { enabledProducts, PRODUCT_NAME } from "./products";
 import { useSignOut, type Session } from "./session";
 
 /**
@@ -119,62 +117,18 @@ export function DashboardPage({ session }: { session: Session }) {
               </Typography>
             </Stack>
 
-            <Tabs
-              value={selected ?? false}
-              onChange={(_, product: Product) => {
-                // A click on a shut tab opens nothing. Tab and the arrow keys don't reach it (MUI
-                // gives an unselected tab `tabIndex=-1` and its arrow keys skip `aria-disabled`
-                // ones), but a screen reader's browse mode still reads its "Coming soon".
-                if (enabled.includes(product)) {
-                  navigate(`/dashboard/${product}`, { replace: true });
-                }
-              }}
-              aria-label="APIs"
-              sx={{
-                minHeight: 0,
-                borderBottom: cardBorder,
-                "& .MuiTabs-indicator": { backgroundColor: color.primary[400], height: 2 },
-              }}
-            >
-              {PRODUCTS.map((product) => {
-                const open = enabled.includes(product);
-                return (
-                  <Tab
-                    key={product}
-                    value={product}
-                    id={tabId(product)}
-                    // Only the selected tab's panel is rendered; the others would point at nothing.
-                    aria-controls={product === selected ? panelId(product) : undefined}
-                    aria-disabled={open ? undefined : true}
-                    disableRipple={!open}
-                    label={
-                      <Stack component="span" direction="row" spacing={1} alignItems="center">
-                        <span>{PRODUCT_NAME[product]}</span>
-                        {!open && <ComingSoon />}
-                      </Stack>
-                    }
-                    sx={{
-                      minHeight: 44,
-                      px: 2,
-                      textTransform: "none",
-                      fontFamily: font.secondary,
-                      fontSize: "0.9375rem",
-                      fontWeight: 500,
-                      color: color.text.tertiary,
-                      "&.Mui-selected": { color: color.text.primary },
-                      ...(!open && { cursor: "default", "&:hover": { color: color.text.tertiary } }),
-                      ...(open && { "&:hover": { color: color.text.primary } }),
-                    }}
-                  />
-                );
-              })}
-            </Tabs>
+            <ProductTabs
+              name="dashboard"
+              selected={selected}
+              enabled={enabled}
+              onSelect={(product) => navigate(`/dashboard/${product}`, { replace: true })}
+            />
 
             {selected && (
               <Box
                 role="tabpanel"
-                id={panelId(selected)}
-                aria-labelledby={tabId(selected)}
+                id={panelId("dashboard", selected)}
+                aria-labelledby={tabId("dashboard", selected)}
               >
                 {selected === "prices" ? (
                   <PricesTab account={{ id: session.id, username: session.username }} />
@@ -194,31 +148,5 @@ export function DashboardPage({ session }: { session: Session }) {
         </Container>
       </Box>
     </>
-  );
-}
-
-const tabId = (product: Product) => `dashboard-tab-${product}`;
-const panelId = (product: Product) => `dashboard-panel-${product}`;
-
-/** The shut tab's mark: Prices' muted status pill, as spans, since it sits inside a button. */
-function ComingSoon() {
-  return (
-    <Box
-      component="span"
-      sx={{
-        display: "inline-flex",
-        alignItems: "center",
-        px: 1,
-        py: 0.25,
-        borderRadius: `${radius.chip}px`,
-        backgroundColor: color.surface.grayAlt,
-        color: color.text.tertiary,
-        fontSize: "0.75rem",
-        fontWeight: 700,
-        lineHeight: 1.5,
-      }}
-    >
-      Coming soon
-    </Box>
   );
 }
