@@ -94,7 +94,7 @@ it("lists the three products in the hero's terminal", () => {
   expect(screen.getByText("2 APIs live · 1 coming soon")).toBeTruthy();
   for (const [name, href] of [
     ["prices-api/", "/api/prices-api/"],
-    ["x402-facilitator/", "/api/quick-start/x402"],
+    ["quick-start/x402", "/api/quick-start/x402"],
     ["sorobanscan-api/", "#soroban-scan-api"],
   ] as const) expect(screen.getByRole("link", { name: new RegExp(name) }).getAttribute("href")).toBe(href);
 });
