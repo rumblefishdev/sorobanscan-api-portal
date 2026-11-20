@@ -9,7 +9,7 @@ const DIRECTORY = [
     live: true,
   },
   {
-    path: "x402-facilitator/",
+    path: "quick-start/x402",
     href: X402_QUICK_START_URL,
     about: "Get paid and found by AI agents",
     live: true,
