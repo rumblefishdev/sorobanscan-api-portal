@@ -342,8 +342,8 @@ for the session, they carry a title, a description and a canonical address of th
 that names no API (`/api/quick-start`), a shut tab or an unknown one is replaced by the first
 open tab's, keeping its `#part`.
 
-The Prices portal's landing page and privacy policy are under the same bar (`PageBar` in
-`src/prices/app/app.tsx`), in place of the portal's own bar with Features, Quick Start, FAQ, Sign
+The Prices portal's landing page is under the same bar (`PageBar` in
+`src/prices/app/app.tsx`; the privacy policy is the hub's own page, `/api/privacy-policy`), in place of the portal's own bar with Features, Quick Start, FAQ, Sign
 in and Get API Key, which only its old sign-in (`accountPages="own"`) still draws.
 
 They were the Prices portal's own pages. `/api/prices-api/quick-start` and `/api/prices-api/docs`

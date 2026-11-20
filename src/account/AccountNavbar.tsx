@@ -53,8 +53,9 @@ export const ACCOUNT_NAVBAR_HEIGHT = { xs: 24 + 16 + 44, sm: 52 };
  * The quick start and the API reference are pages of this tree, one for every API (akot,
  * 2026-11-19; `docs/DocsPage.tsx`), and open to a visitor who isn't signed in: the bar is over
  * them for everybody, with "Log in" where the account and Sign out would be (`visitor`). The
- * Prices portal's landing page and privacy policy draw the bar too (akot, 2026-11-19; `PageBar`
- * in `src/prices/app/app.tsx`), so every page of the APIs has the one bar. A link is a route of
+ * Prices portal's landing page draws the bar too (akot, 2026-11-19; `PageBar` in
+ * `src/prices/app/app.tsx`); the privacy policy is a page of this tree (2026-11-20), so every
+ * page of the APIs has the one bar. A link is a route of
  * the tree the bar is drawn in and a plain link from the other tree: under the other tree's
  * basename a router link would name a page of that one.
  */

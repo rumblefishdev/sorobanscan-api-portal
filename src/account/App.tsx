@@ -33,8 +33,8 @@ function ToLanding() {
 /**
  * The account pages: `/login` and `/dashboard` (with `/dashboard/<product>` for a tab), one sign-in
  * and one dashboard for every API, and the pages open to everybody, `/quick-start/<product>` and
- * `/docs/<product>` (`docs/DocsPage.tsx`) and `/privacy-policy` (`PrivacyPolicyPage.tsx`). The session is asked for once, here, so the sign-in
- * page's forward to the dashboard doesn't ask again; the sign-in page asks again only after a
+ * `/docs/<product>` (`docs/DocsPage.tsx`) and `/privacy-policy` (`PrivacyPolicyPage.tsx`). The
+ * session is asked for once, here, so the sign-in page's forward to the dashboard doesn't ask again; the sign-in page asks again only after a
  * sign-in in a second window.
  */
 export function App() {

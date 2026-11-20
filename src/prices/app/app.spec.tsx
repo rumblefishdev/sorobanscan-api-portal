@@ -91,7 +91,7 @@ const REWORK_URL = '/api/key/rework';
 const ISSUE_HREF = '/api/auth/login?action=issue';
 /**
  * The hub's backend (the shared sign-in): who is signed in to the hub, which
- * decides what the hub's bar over the landing page and the privacy policy
+ * decides what the hub's bar over the landing page
  * offers, and the hub's sign-out.
  */
 const HUB_ME_URL = '/api/hub/me';
