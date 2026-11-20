@@ -43,6 +43,12 @@ backend is a Hono app with no Lambda entry, no infrastructure code and no pipeli
 10. **Prices' own sign-in stays in its backend until after the start**, as the way back.
 11. **Pull requests first, deployment after.** The fixes and what the deployment needs are
     reviewed and merged in every repo; only then is anything deployed.
+12. **The function URL's host is kept out of git**, as both repos are public: the hub's stack
+    writes it into an SSM parameter, which the explorer's stack reads when it deploys (below,
+    "The backend in AWS"). From the review of the launch.
+13. **The function and its log group have fixed names**, set before the stack's first deploy,
+    when a name costs nothing: a rename later replaces the function, and its URL's host with it.
+14. **Two alarms on the backend**, to stellar-x402's alarm topic (below, "The backend in AWS").
 
 ## Approaches considered for the addresses
 
@@ -186,8 +192,9 @@ One pull request in `soroban-block-explorer`, with a task of its own there.
 - **Settings arm it, in two stages.** `infra/envs/production.json` gains the hub's values.
   Without them the stack builds what it builds today, so the pull request merges and is released
   with no change to production, and testnet never changes.
-  - *The backend:* its function URL host and the name of the secret for the header (below). With
-    these alone the stack adds `/api/hub/*` and changes nothing else: every page is still the
+  - *The backend:* the name of the SSM parameter that holds its function URL's host, and the
+    name of the secret for the header (below). With these alone the stack adds `/api/hub/*`
+    and changes nothing else: every page is still the
     explorer's and the old Prices portal's, and nothing links to the backend. This is the shared
     sign-in design's step 1, and it is how the backend is tried from AWS before anybody is sent
     to it ("The deployment").
@@ -229,7 +236,8 @@ In this repo: the Lambda's entry, its infrastructure as a CDK app, and a runbook
 
 - **The function:** Node 22, the Hono app behind `hono/aws-lambda`, one function URL with no
   IAM auth (the header is the lock), a timeout above the callback's 25 seconds and under
-  CloudFront's 30, its log group with a retention.
+  CloudFront's 30, its log group with a retention. Its name is `sorobanscan-hub-production-backend`
+  and its log group's `/aws/lambda/sorobanscan-hub-production-backend` (decision 13).
 - **Its settings:** `HUB_PUBLIC_ORIGIN=https://sorobanscan.com`, `HUB_PRODUCTS=prices,x402`, the
   prefix `/api/`, and Discord's client id, as plain settings. Discord's client secret, the
   session's signing secret and the header's secret are read from Secrets Manager when an instance
@@ -239,7 +247,19 @@ In this repo: the Lambda's entry, its infrastructure as a CDK app, and a runbook
 - **The secrets:** the session's and the header's are made by the stack with generated values,
   so nobody types or sees them. Discord's is put in by akot from the production Discord
   application, whose redirect is `https://sorobanscan.com/api/hub/auth/callback`.
-- **The stack's output** is the function URL's host, which the explorer's setting takes.
+- **The function URL's host** goes into the SSM parameter
+  `/sorobanscan-hub/production/backend-host`, written by the stack; the explorer's setting names
+  the parameter, and its stack reads the value each time it deploys (decision 12). The host is
+  in neither repo nor in the stack's outputs, and the hub's stack is deployed before the
+  explorer's (step 4 below). A host that leaks is replaced by two deploys of the hub's stack,
+  without its URL and then with it, and a release of the explorer: Lambda keeps one URL per
+  function, under one address, and a new URL gets a new one. The runbook has the steps and the
+  outage they cost.
+- **Two alarms** (decision 14), to stellar-x402's SNS topic `x402-production-alarms` (Slack's
+  `#stellar-x402-bot`), whose ARN the stack takes as a context value: Lambda's `Throttles`, a Sum
+  of 1 or more in 5 minutes, and the function URL's `Url5xxCount`, 5 or more in 5 minutes
+  (function errors, timeouts, an instance that can't read its secrets, a product down). Five
+  minutes with no data is not a fault.
 - **The bundle** is built with `VITE_PRODUCTS=prices,x402` and
   `VITE_PORTAL_API_ORIGIN=https://prices-api.sorobanscan.com`, and copied to the bucket under
   `api/` without deleting anything there: the old Prices portal's `api/prices-api/index.html` and
@@ -272,8 +292,13 @@ and a made-up `code` costs Discord a request from the hub's application. Repeate
 the application and nobody signs in.
 
 What it doesn't stop: requests from many addresses at once, which only the ceiling bounds, and
-which then take the dashboard away from everybody for as long as they last. Accepted for the
-start; AWS WAF's rate rule is the answer if it is seen.
+which then take the dashboard away from everybody for as long as they last. The ceiling also
+caps the function URL at 200 requests a second, 10 times its reserved concurrency (AWS's Lambda
+guide, "Throttling function URLs"); past either, the URL answers `429` to everybody. Keeping the
+host out of git (decision 12) closes only the direct path: a flood through CloudFront to
+`GET me`, which the limit doesn't count, reaches the Lambda just as a direct one would. The
+`Throttles` alarm says when it happens. Accepted for the start; AWS WAF's rate rule is the
+answer if it is seen.
 
 ### Only through CloudFront
 
@@ -289,6 +314,9 @@ start; AWS WAF's rate rule is the answer if it is seen.
 - `pnpm dev` and `pnpm preview` have no such secret and make no such check. The Lambda's entry
   refuses to serve without it.
 - The address in `X-Hub-Viewer-Ip` is trusted by the limit only because of this check.
+- The check refuses a direct call, but the call still invokes the function and counts against
+  its ceiling, so the host is kept out of git too (decision 12). That closes only the direct
+  path ("The request limit").
 
 ### Changes in the page
 
@@ -323,10 +351,11 @@ depends on none of them.
 ### The deployment, after all four are merged
 
 1. akot: the production Discord application and its secret in Secrets Manager.
-2. The hub's stack. Then, at the function URL's own address: no header, `400`.
+2. The hub's stack, with the alarm topic's ARN. Then, at the function URL's own address, read
+   from the parameter: no header, `400`.
 3. The bundle to the bucket. Nothing serves it yet: `/api/assets/…` still answers `302`.
-4. In the explorer: the pull request that sets the backend's two values, and its deploy. Only
-   `/api/hub/*` changes.
+4. In the explorer: the pull request that sets the backend's two names (the host's parameter,
+   the header's secret), and its deploy. Only `/api/hub/*` changes.
 5. The backend tried from AWS, by akot in a browser, at its addresses: `/api/hub/auth/login`
    through Discord and back (the callback then sends the browser to `/api/dashboard`, which is
    still the old portal's, and that is expected); then `/api/hub/me`, `/api/hub/prices/account`
