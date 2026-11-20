@@ -41,9 +41,11 @@ export async function loadLambdaSettings(
     let value: unknown;
     try {
       value = await read(env[setting] as string);
-    } catch {
-      // Not the reader's message: it can carry an ARN or more.
-      throw new Error(`The secret ${setting} names could not be read`);
+    } catch (error) {
+      // The error's name only, not its message: that can carry an ARN or more.
+      throw new Error(
+        `The secret ${setting} names could not be read: ${error instanceof Error ? error.name : "a failure"}`,
+      );
     }
     if (typeof value !== "string" || value.trim() === "") {
       throw new Error(`The secret ${setting} names holds no text`);
