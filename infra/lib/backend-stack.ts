@@ -74,6 +74,8 @@ export class BackendStack extends Stack {
         HUB_ORIGIN_SECRET_NAME: `${SECRET_PREFIX}/origin-secret`,
       },
       bundling: {
+        // `@aws-sdk/*` stays external (the default): production runs the Lambda runtime's SDK, not
+        // the tested one; `readFromAws`'s own abort still bounds a read.
         format: OutputFormat.ESM,
         target: "node22",
         minify: true,
