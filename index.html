@@ -15,10 +15,13 @@
         ad_personalization: 'denied',
         wait_for_update: 500,
       });
-      // No Custom HTML tags or Custom JavaScript variables, whatever the
-      // container holds: a published tag must not be able to read the key
-      // this page renders (explorer task 0593).
-      dataLayer.push({ 'gtm.blocklist': ['customScripts'] });
+      // The dashboard on this origin shows API keys, so whatever the container
+      // holds, GTM runs no Custom HTML or JS, no third-party vendor scripts or
+      // iframes, no Custom Image or third-party pixels (they could send page
+      // text) and no DOM Element variables (they could read a shown key).
+      // GA4's Google tag is class `google` and unaffected (Tag Manager's
+      // "Restrict tag deployment" guide; explorer task 0593).
+      dataLayer.push({ 'gtm.blocklist': ['customScripts', 'customPixels', 'nonGoogleScripts', 'nonGooglePixels', 'nonGoogleIframes', 'd'] });
     </script>
     <script>
       (function (w, d, s, l, i) {

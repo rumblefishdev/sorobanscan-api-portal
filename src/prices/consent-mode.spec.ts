@@ -51,12 +51,27 @@ describe('Google Consent Mode wiring in index.html', () => {
     });
   });
 
-  it('blocks Custom HTML and Custom JS tags before GTM loads', () => {
+  // The classes are those of Tag Manager's restrict guide,
+  // https://developers.google.com/tag-platform/tag-manager/restrict. GA4's
+  // Google tag is class `google`, not among them, and no allowlist narrows it.
+  it('blocks the tags that could read or send a shown key before GTM loads', () => {
     const blockAt = inline.findIndex((s) => s.includes('gtm.blocklist'));
     const gtmAt = inline.findIndex((s) => s.includes('googletagmanager'));
     expect(blockAt).toBeGreaterThanOrEqual(0);
     expect(blockAt).toBeLessThan(gtmAt);
-    expect(w.dataLayer).toContainEqual({ 'gtm.blocklist': ['customScripts'] });
+    expect(w.dataLayer).toContainEqual({
+      'gtm.blocklist': [
+        'customScripts',
+        'customPixels',
+        'nonGoogleScripts',
+        'nonGooglePixels',
+        'nonGoogleIframes',
+        'd',
+      ],
+    });
+    expect(w.dataLayer.some((a) => Object.hasOwn(a, 'gtm.allowlist'))).toBe(
+      false,
+    );
   });
 
   it('forwards the banner categories as a consent update', () => {
