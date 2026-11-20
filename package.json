@@ -14,6 +14,7 @@
     "infra:synth": "cdk synth --app \"node --experimental-strip-types infra/bin/hub.ts\" --output infra/cdk.out",
     "infra:diff": "cdk diff --app \"node --experimental-strip-types infra/bin/hub.ts\" --output infra/cdk.out",
     "infra:deploy": "cdk deploy --app \"node --experimental-strip-types infra/bin/hub.ts\" --output infra/cdk.out",
+    "upload": "bash scripts/upload-bundle.sh",
     "test": "vitest run"
   },
   "dependencies": {
