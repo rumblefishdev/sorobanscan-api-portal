@@ -84,10 +84,10 @@ describe("BackendStack", () => {
     });
   });
 
-  it("makes the session and origin secrets, retained, 64 characters, no punctuation", () => {
+  it("makes the session and origin secrets, retained except on a failed create, 64 characters, no punctuation", () => {
     template.resourceCountIs("AWS::SecretsManager::Secret", 2);
     template.hasResource("AWS::SecretsManager::Secret", {
-      DeletionPolicy: "Retain",
+      DeletionPolicy: "RetainExceptOnCreate",
       UpdateReplacePolicy: "Retain",
       Properties: {
         Name: `${SECRET_PREFIX}/session`,
@@ -95,7 +95,7 @@ describe("BackendStack", () => {
       },
     });
     template.hasResource("AWS::SecretsManager::Secret", {
-      DeletionPolicy: "Retain",
+      DeletionPolicy: "RetainExceptOnCreate",
       UpdateReplacePolicy: "Retain",
       Properties: {
         Name: `${SECRET_PREFIX}/origin-secret`,
