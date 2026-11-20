@@ -113,27 +113,6 @@ export function devProxy(
   );
 }
 
-/**
- * The x402 Facilitator's own page, `/api/x402-facilitator/`, which every "x402 Facilitator" link
- * on the hub opens. On production the explorer's CloudFront serves it from the page's own bundle
- * (`apps/portal-web` in `rumblefishdev/stellar-x402`); on this server nothing did, and the hub
- * answered at that address with its own page (akot, 2026-11-19). So the address goes to that
- * page's own dev server, whose `base` is the same prefix: `pnpm --filter @stellar-x402/portal-web
- * dev` there, on Vite's next free port when this server holds 5173.
- *
- * `DEV_X402_PAGE_TARGET` names another address, and set to nothing turns the rule off. With
- * nothing listening at the target the address answers Vite's proxy error, not a page.
- * `ws`, so that page's own hot reload reaches it through this server.
- */
-const X402_PAGE_PROXY = "^/api/x402-facilitator(/|\\?|$)";
-const DEFAULT_DEV_X402_PAGE_TARGET = "http://localhost:5174";
-
-/** The rule for the x402 page, or none without a target. */
-export function x402PageProxy(target: string | undefined): Record<string, ProxyOptions> {
-  if (!target) return {};
-  return { [X402_PAGE_PROXY]: { target, changeOrigin: true, ws: true } };
-}
-
 export default defineConfig(({ mode }) => {
   // Every setting is read as Vite reads its own: from the `.env` files of the mode, and from
   // `process.env`, which wins over them. The `""` prefix loads ALL of them, not just `VITE_` ones.
@@ -145,8 +124,6 @@ export default defineConfig(({ mode }) => {
   const base = basePath(env.VITE_BASE_PATH);
   const proxy = {
     ...devProxy(env.DEV_API_PROXY_TARGET || DEFAULT_DEV_API_PROXY_TARGET, env.DEV_API_KEY),
-    // Unset is the default; set to nothing is off.
-    ...x402PageProxy(env.DEV_X402_PAGE_TARGET ?? DEFAULT_DEV_X402_PAGE_TARGET),
   };
   return {
     base,

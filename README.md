@@ -38,14 +38,6 @@ Both `pnpm dev` and `pnpm preview` send the Prices backend's paths to Prices' pr
 (see "The Prices portal" below) and serve the hub's own backend themselves (see "The hub's
 backend"), so the browser sees one origin.
 
-The x402 Facilitator's page, `/api/x402-facilitator/`, is another repo's
-(`apps/portal-web` in `rumblefishdev/stellar-x402`), and production serves it from its own
-bundle. Both commands send that address to the page's own dev server, `http://localhost:5174`
-unless `DEV_X402_PAGE_TARGET` names another (set to nothing, the address is the hub's again):
-run `pnpm --filter @stellar-x402/portal-web dev` in that repo beside this server, and the hub's
-links to the x402 Facilitator open its page. With nothing listening there, the address answers
-Vite's proxy error.
-
 ## The prefix: `VITE_BASE_PATH`
 
 The bundle is built for one prefix, `/api/` unless `VITE_BASE_PATH` says another
@@ -53,8 +45,9 @@ The bundle is built for one prefix, `/api/` unless `VITE_BASE_PATH` says another
 file, which the environment overrides). Vite's `base` and the router's `basename` both follow
 it, so every file the page asks for is under the prefix, and the Prices portal is at
 `prices-api/` under it. The hub's links to the bundle's own pages follow it too (`src/links.ts`:
-the Prices portal, the sign-in, the quick start and the reference); its links to the x402
-Facilitator's page and to the explorer don't, since those are other apps at their own addresses.
+the Prices portal, the sign-in, the quick starts and the reference); its link to the
+explorer doesn't, since that is another app at its own address. The hub links to no other app's
+page under `/api/`.
 The value must start and end with `/`, and start with only one
 (`//api/next/` would name another host); anything else stops the build with a message naming the
 setting. A build for any prefix but `/api/` gets `<meta name="robots" content="noindex">`.

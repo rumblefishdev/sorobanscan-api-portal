@@ -18,6 +18,7 @@ describe("the hub's links", () => {
     expect(links.PRICES_API_URL).toBe("/api/prices-api/");
     expect(links.LOGIN_URL).toBe("/api/login");
     expect(links.QUICK_START_URL).toBe("/api/quick-start/prices");
+    expect(links.X402_QUICK_START_URL).toBe("/api/quick-start/x402");
     expect(links.DOCS_URL).toBe("/api/docs/prices");
   });
 
@@ -28,12 +29,13 @@ describe("the hub's links", () => {
     expect(links.PRICES_API_URL).toBe("/api/next/prices-api/");
     expect(links.LOGIN_URL).toBe("/api/next/login");
     expect(links.QUICK_START_URL).toBe("/api/next/quick-start/prices");
+    expect(links.X402_QUICK_START_URL).toBe("/api/next/quick-start/x402");
     expect(links.DOCS_URL).toBe("/api/next/docs/prices");
   });
 
   it("leave the other apps of the site where they are, whatever the prefix", async () => {
     const links = await linksAt("/api/next/");
     expect(links.EXPLORER_URL).toBe("/");
-    expect(links.X402_URL).toBe("/api/x402-facilitator/");
+    expect("X402_URL" in links).toBe(false);
   });
 });
