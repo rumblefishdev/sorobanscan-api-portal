@@ -32,7 +32,9 @@ function stubMe(me: unknown) {
   );
 }
 
-const policyHeading = () => screen.findByRole("heading", { level: 1, name: /privacy policy/i });
+// The policy is a lazy chunk: the first page of a run may wait for its transform on a busy machine.
+const policyHeading = () =>
+  screen.findByRole("heading", { level: 1, name: /privacy policy/i }, { timeout: 8000 });
 const meta = (name: string) =>
   document.head.querySelector(`meta[name="${name}"]`)?.getAttribute("content") ?? null;
 const canonical = () =>
@@ -132,6 +134,27 @@ describe("the privacy policy page", () => {
     renderAt("/api/privacy-policy");
     await policyHeading();
     expect(screen.getByRole("heading", { level: 2, name: /x402 Facilitator API keys/ })).toBeTruthy();
+  });
+
+  it("opens at the #part its address names, once the lazy policy has drawn it", async () => {
+    const scrolled: string[] = [];
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this.id);
+    };
+    try {
+      stubMe(SIGNED_OUT);
+      renderAt("/api/privacy-policy#personal-data-we-process");
+      await waitFor(() => expect(scrolled).toContain("personal-data-we-process"));
+    } finally {
+      delete (Element.prototype as Partial<Element>).scrollIntoView;
+    }
+  });
+
+  it("carries no description of its own", async () => {
+    stubMe(SIGNED_OUT);
+    renderAt("/api/privacy-policy");
+    await policyHeading();
+    expect(meta("description")).toBeNull();
   });
 
   it("leaves x402's paragraph out when only Prices is on", async () => {
