@@ -52,7 +52,10 @@ The bundle is built for one prefix, `/api/` unless `VITE_BASE_PATH` says another
 (`VITE_BASE_PATH=/api/next/ pnpm build`, or the line `VITE_BASE_PATH=/api/next/` in a `.env`
 file, which the environment overrides). Vite's `base` and the router's `basename` both follow
 it, so every file the page asks for is under the prefix, and the Prices portal is at
-`prices-api/` under it. The value must start and end with `/`, and start with only one
+`prices-api/` under it. The hub's links to the bundle's own pages follow it too (`src/links.ts`:
+the Prices portal, the sign-in, the quick start and the reference); its links to the x402
+Facilitator's page and to the explorer don't, since those are other apps at their own addresses.
+The value must start and end with `/`, and start with only one
 (`//api/next/` would name another host); anything else stops the build with a message naming the
 setting. A build for any prefix but `/api/` gets `<meta name="robots" content="noindex">`.
 
