@@ -328,7 +328,9 @@ export function createHub(settings: HubSettings | undefined, deps: HubDeps = {})
   /** Not counted: it reads the cookie and calls nobody, and the sign-in page polls it. */
   const unlimited = `GET ${base}hub/me`;
   app.use(async (c, next) => {
-    const route = `${c.req.method} ${c.req.path}`;
+    // Hono runs a HEAD request through the GET handler, so it counts as the GET it runs.
+    const method = c.req.method === "HEAD" ? "GET" : c.req.method;
+    const route = `${method} ${c.req.path}`;
     if (route === unlimited) return next();
     const signIn = signIns.has(route);
     const hit = (signIn ? signInLimit : otherLimit).hit(
