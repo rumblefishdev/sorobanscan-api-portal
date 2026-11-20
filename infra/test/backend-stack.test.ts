@@ -122,7 +122,7 @@ describe("BackendStack", () => {
     expect(resources).not.toContain('"*"');
   });
 
-  it("has no statement on Resource * except the log group's own", () => {
+  it("has no inline policy statement on Resource * (the managed basic-execution role grants logs on *)", () => {
     expect(Object.keys(template.findResources("AWS::IAM::Policy")).length).toBeGreaterThan(0);
     for (const policy of Object.values(template.findResources("AWS::IAM::Policy"))) {
       for (const s of policy.Properties.PolicyDocument.Statement as Array<{
