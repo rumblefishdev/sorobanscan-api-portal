@@ -31,10 +31,8 @@ export function DashboardNavbar({
   onSignOut: () => void;
   /**
    * Which of the bar's own pages this is — the one that gets the underline.
-   * `privacy-policy` is a page under this bar that is not in it, so nothing
-   * is underlined there.
    */
-  current?: 'dashboard' | 'quick-start' | 'docs' | 'privacy-policy';
+  current?: 'dashboard' | 'quick-start' | 'docs';
 }) {
   const links = [
     {
