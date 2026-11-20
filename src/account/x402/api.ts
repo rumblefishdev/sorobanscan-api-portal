@@ -104,10 +104,15 @@ export async function revokeKey(): Promise<{ revoked_at?: string; next_eligible_
 /** The line for every failure that means x402 can't be reached or isn't on. */
 export const UNAVAILABLE = "x402 is unavailable right now. Try again in a moment.";
 
-/** Codes (and the page's own) that mean x402 isn't there to ask: the one unavailable line. */
+/**
+ * Codes (and the page's own) that mean x402 isn't there to ask: the one unavailable line.
+ * `key_unavailable` is x402's own, its 502 when its key store is out of reach (`apps/portal` in
+ * stellar-x402), which the hub passes on as it is.
+ */
 const UNAVAILABLE_CODES = new Set([
   "x402_unavailable",
   "x402_busy",
+  "key_unavailable",
   "product_not_configured",
   "unknown_product",
   "timeout",
@@ -129,7 +134,7 @@ const WORDS: Record<string, string> = {
   bad_origin: "the request didn't come from this page — reload it and try again",
   no_key: "you have no API key",
   key_revoked: "your API key was revoked",
-  rate_limited: "Too many requests for your account. Wait a minute and try again.",
+  rate_limited: "too many requests for your account — wait a minute and try again",
   invalid_token:
     "x402 refused the hub's request — this is ours to fix, so tell us if it keeps happening",
   internal: "the hub failed — try again, and tell us if it keeps happening",
