@@ -213,6 +213,24 @@ describe("/login", () => {
     );
   });
 
+  // The backend's limit on its sign-in routes, by address: over it, it sends the browser here.
+  it("says there were too many sign-in attempts, on ?signin=busy, and takes it off the address", async () => {
+    stubBackend(() => answer(200, SIGNED_OUT));
+    renderAt("/api/login?signin=busy&from=prices");
+    expect((await screen.findByTestId("signin-busy")).textContent).toBe(
+      "Too many sign-in attempts from your network. Try again in a minute.",
+    );
+    expect(screen.queryByText("OAuth error")).toBeNull();
+    expect(screen.queryByText(/membership required/)).toBeNull();
+    // Trying again in a minute is the remedy, so the button stays.
+    expect(screen.getByRole("link", { name: "Sign in with Discord" }).getAttribute("href")).toBe(
+      SIGN_IN_URL,
+    );
+    await settle();
+    expect(where).toBe("/login?from=prices");
+    expect(screen.getByTestId("signin-busy")).toBeTruthy();
+  });
+
   it("reads ?signin= once and takes it off the address, keeping what it said", async () => {
     stubBackend(() => answer(200, SIGNED_OUT));
     renderAt("/api/login?signin=not_member&from=prices");
@@ -358,6 +376,23 @@ describe("/login", () => {
       expect(where).toBe("/dashboard");
     },
   );
+
+  // "Get API Key" posted in this tab, over the backend's limit: asking again at once on the
+  // dashboard would meet the same refusal, so the card says to wait.
+  it("keeps a signed-in visitor on ?signin=busy, and says to wait a minute", async () => {
+    stubBackend(() => answer(200, SIGNED_IN));
+    renderAt("/api/login?signin=busy");
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "You are still signed in" }),
+    ).toBeTruthy();
+    expect(screen.getByTestId("signin-busy").textContent).toBe(
+      "Too many sign-in attempts from your network. Try again in a minute.",
+    );
+    expect(screen.getByTestId("still-signed-in")).toBeTruthy();
+    expect(signInLinks()).toEqual([]);
+    await settle();
+    expect(where).toBe("/login");
+  });
 });
 
 /**
@@ -449,6 +484,21 @@ describe("/login's Discord window", () => {
     await windowLands("?signin=not_member");
     expect(screen.getByTestId("signin-not-member")).toBeTruthy();
     expect(screen.queryByText("Waiting for Discord…")).toBeNull();
+  });
+
+  // The window's sign-in met the backend's limit: said here, on the page that opened it.
+  it("shows the window's refusal over the limit, without asking the backend", async () => {
+    const fetchMock = stubBackend(() => answer(200, SIGNED_OUT));
+    opens(fakeWindow());
+    renderAt("/api/login");
+    await press("Sign in with Discord");
+    await windowLands("?signin=busy");
+    expect(screen.getByTestId("signin-busy").textContent).toBe(
+      "Too many sign-in attempts from your network. Try again in a minute.",
+    );
+    expect(screen.queryByTestId("signin-failed")).toBeNull();
+    expect(screen.queryByText("Waiting for Discord…")).toBeNull();
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/hub/me").length).toBe(1);
   });
 
   it("says the sign-in failed when the window says it worked and the backend disagrees", async () => {

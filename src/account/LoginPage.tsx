@@ -49,7 +49,8 @@ import { SIGN_IN_URL, type Session } from "./session";
  * `?signin=<reason>`.
  *
  * Every refusal is Prices' wording for the same outcome, word for word, and so are the controls
- * that go with it.
+ * that go with it, but `busy`, the hub's backend's limit on its sign-in routes, which Prices
+ * doesn't have: one line of the hub's own over the ordinary card.
  */
 
 /** The card's headline and standfirst, the hub's: sign-in issues no key here. */
@@ -77,8 +78,11 @@ const POPUP_POLL_MS = 1500;
 /** How often the page looks whether the window is still open. Prices' value. */
 const POPUP_CLOSED_WATCH_MS = 500;
 
-/** Why a sign-in ended without a session, as the hub's backend names it in `?signin=`. */
-const REFUSALS = ["cancelled", "failed", "not_member", "pending_rules", "unknown"] as const;
+/**
+ * Why a sign-in ended without a session, as the hub's backend names it in `?signin=`: its
+ * callback's refusals, and `busy`, its limit's, which a round trip meets before Discord.
+ */
+const REFUSALS = ["cancelled", "failed", "not_member", "pending_rules", "unknown", "busy"] as const;
 type Refusal = (typeof REFUSALS)[number];
 
 const isRefusal = (value: string | null): value is Refusal =>
@@ -277,7 +281,11 @@ export function LoginPage({
         ) : session.state === "failed" ? (
           <SessionFailedCard session={session} />
         ) : session.state === "signed_in" ? (
-          <StillSignedInCard username={session.username} dashboard={dashboard} />
+          <StillSignedInCard
+            username={session.username}
+            dashboard={dashboard}
+            busy={outcome === "busy"}
+          />
         ) : signIn.waiting ? (
           <WaitingCard />
         ) : (
@@ -326,15 +334,25 @@ export function SessionFailedCard({
 /**
  * A signed-in visitor back from a round trip that was refused (see `LoginPage`): their session is
  * as it was, and the dashboard, at `dashboard` (`useDashboardFrom`), is where to ask for a key
- * again.
+ * again. When the refusal was the backend's limit (`busy`), not before the minute is out, so the
+ * card says that too.
  */
-function StillSignedInCard({ username, dashboard }: { username: string; dashboard: string }) {
+function StillSignedInCard({
+  username,
+  dashboard,
+  busy,
+}: {
+  username: string;
+  dashboard: string;
+  busy: boolean;
+}) {
   return (
     <LoginCard
       title="You are still signed in"
       titleComponent="h1"
       subtitle={LOGIN_SUBTITLE}
     >
+      {busy && <TooManyAttempts />}
       <Callout variant="neutral">
         <p data-testid="still-signed-in">
           That round trip through Discord did not complete, so nothing changed: you are still
@@ -526,6 +544,8 @@ function SignInCard({
 
   return (
     <LoginCard title={LOGIN_TITLE} titleComponent="h1" subtitle={LOGIN_SUBTITLE}>
+      {/* The backend's limit: a banner over a button that works again once the minute is out. */}
+      {outcome === "busy" && <TooManyAttempts />}
       {/* Discord didn't answer: a banner over a button that still works, since retrying is the
           whole remedy. Never "not a member". */}
       {outcome === "unknown" && (
@@ -557,6 +577,21 @@ function SignInCard({
       <LabelledRule>What you get</LabelledRule>
       <Benefits items={BENEFITS} />
     </LoginCard>
+  );
+}
+
+/**
+ * `busy`: the hub's backend refused the round trip before Discord, over its limit on the sign-in
+ * routes from one address (`bff/src/app.ts`). The tab's banner says the same for "Get API Key"
+ * (`IssueBanner`).
+ */
+function TooManyAttempts() {
+  return (
+    <Callout variant="error">
+      <p data-testid="signin-busy">
+        Too many sign-in attempts from your network. Try again in a minute.
+      </p>
+    </Callout>
   );
 }
 

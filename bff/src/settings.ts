@@ -25,6 +25,13 @@ export type HubSettings = {
   products: string[];
   /** How old a Discord account must be, in minutes, to be issued a key. */
   minAccountAgeMinutes: number;
+  /**
+   * The secret CloudFront adds to every request it sends the backend, in `X-Hub-Origin-Secret`:
+   * `current`, and `previous` while it is being changed. With it, a request that carries neither
+   * is refused before anything else (`createHub`). Absent, as on `pnpm dev` and `pnpm preview`,
+   * there is no such check: {@link readSettings} never sets it, the Lambda's entry does.
+   */
+  originSecret?: { current: string; previous?: string };
 };
 
 /** Stellar Developers, the Discord server whose members may sign in. */

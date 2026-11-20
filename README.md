@@ -168,6 +168,25 @@ any other path under `/api/hub/x402/` 400 `unknown_route`.
 Only the dev and preview servers run it: deploying it (in AWS, beside the explorer's CloudFront,
 the cutover's step 1) is a later plan.
 
+Before any route, after its `no-store` headers, the backend checks a request in this order:
+
+1. **Only through CloudFront.** With a secret in its settings (`originSecret`, which the Lambda's
+   entry gives it and `readSettings` never does), a request must carry the secret's `current` or
+   `previous` value in `X-Hub-Origin-Secret`, a header CloudFront adds; each is compared in
+   constant time. Anything else is 400 `{"error":"not_through_the_site"}`, and is not counted
+   below. `pnpm dev` and `pnpm preview` have no such secret and make no such check.
+2. **A limit by client.** The client is the address in `X-Hub-Viewer-Ip`, which CloudFront's
+   function writes from the viewer's, and which the limit trusts only because of 1. An IPv6
+   address counts by its /56; a missing or malformed one, as every request on the dev server, is
+   one client with every other such request. 30 requests a minute to `auth/*` and 120 to the
+   rest, counted apart, so the dashboard keeps working for people behind one address who have
+   spent the sign-in's, and kept in each instance's memory. Over the limit, `GET auth/login`,
+   `GET auth/callback` and `POST auth/issue`, which a browser opens as pages, send the browser to
+   `/api/login?signin=busy`, where the sign-in page, or "Get API Key"'s tab when its window lands
+   there, says "Too many sign-in attempts from your network. Try again in a minute."; anything
+   else is 429 `{"error":"rate_limited"}` with `Retry-After`, sign-out among them.
+3. **The page's `Origin`** on every `POST`: 400 `{"error":"bad_origin"}` otherwise.
+
 ### The token to Prices
 
 For the Prices tab the backend calls Prices' own backend server to server, on Prices' hub
