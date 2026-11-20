@@ -7,6 +7,7 @@ import { lazy, Suspense } from "react";
 import { Footer } from "../prices/landing/Chrome";
 import { color } from "../prices/theme/tokens";
 import { AccountNavbar, SignOutFailed } from "./AccountNavbar";
+import { enabledProducts } from "./products";
 import { useSignOut, type Session } from "./session";
 import { usePagePlace } from "./usePagePlace";
 
@@ -28,6 +29,9 @@ export function PrivacyPolicyPage({ session }: { session: Session }) {
   const signOut = useSignOut();
   usePagePlace("privacy-policy");
   const address = `${window.location.origin}${import.meta.env.BASE_URL}privacy-policy`;
+  // The policy is about no one API, so the bar's links open the first tab. Without a product they
+  // would name the bare `/api/quick-start` and `/api/docs`, which `src/links.ts` says never to.
+  const product = enabledProducts(import.meta.env.VITE_PRODUCTS)[0];
 
   return (
     <>
@@ -40,12 +44,14 @@ export function PrivacyPolicyPage({ session }: { session: Session }) {
           onSignOut={signOut.onSignOut}
           signingOut={signOut.state === "in_flight"}
           current="privacy-policy"
+          product={product}
         />
       ) : (
         // Not knowing who is signed in is no reason to hold the page back: it offers the
         // sign-in, which says what is wrong if anything is.
         <AccountNavbar
           current="privacy-policy"
+          product={product}
           visitor={session.state === "loading" ? "pending" : "signed_out"}
         />
       )}
