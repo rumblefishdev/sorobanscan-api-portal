@@ -94,7 +94,7 @@ it("lists the three products in the hero's terminal", () => {
   expect(screen.getByText("2 APIs live · 1 coming soon")).toBeTruthy();
   for (const [name, href] of [
     ["prices-api/", "/api/prices-api/"],
-    ["x402-facilitator/", "/api/x402-facilitator/"],
+    ["x402-facilitator/", "/api/quick-start/x402"],
     ["sorobanscan-api/", "#soroban-scan-api"],
   ] as const) expect(screen.getByRole("link", { name: new RegExp(name) }).getAttribute("href")).toBe(href);
 });
@@ -106,7 +106,7 @@ it("has a card per product, linked as the design links it", () => {
   for (const name of ["Prices API", "x402 Facilitator", "Soroban Scan API"])
     expect(within(products).getByRole("heading", { level: 3, name })).toBeTruthy();
   expect(within(products).getByRole("link", { name: "Explore Prices API" }).getAttribute("href")).toBe("/api/prices-api/");
-  expect(within(products).getByRole("link", { name: "Explore x402 Facilitator" }).getAttribute("href")).toBe("/api/x402-facilitator/");
+  expect(within(products).getByRole("link", { name: "Explore x402 Facilitator" }).getAttribute("href")).toBe("/api/quick-start/x402");
   expect(within(products).getByRole("link", { name: "See what’s coming" }).getAttribute("href")).toBe("#soroban-scan-api");
   for (const text of ["api.sorobanscan.com/prices", "api.sorobanscan.com/x402", "api.sorobanscan.com/scan"])
     expect(within(products).getByText(text)).toBeTruthy();
@@ -118,7 +118,7 @@ it("sends each use case to its product", () => {
   const hrefs = within(choose).getAllByRole("link").map((a) => a.getAttribute("href"));
   expect(hrefs).toEqual([
     "/api/prices-api/", "/api/prices-api/",
-    "/api/x402-facilitator/", "/api/x402-facilitator/",
+    "/api/quick-start/x402", "/api/quick-start/x402",
     "#soroban-scan-api",
   ]);
 });
@@ -205,4 +205,15 @@ it("scrolls to the part its address names when it opens", () => {
   } finally {
     delete prototype.scrollIntoView;
   }
+});
+
+it("links nothing to the x402 Facilitator's own page, and every x402 link is its quick start", () => {
+  renderAt("/api/");
+  const hrefs = Array.from(document.querySelectorAll("a")).map((a) => a.getAttribute("href") ?? "");
+  expect(hrefs.filter((h) => h.includes("x402-facilitator"))).toEqual([]);
+  const x402 = screen.getAllByRole("link", { name: /x402/i }).filter((a) => !a.getAttribute("href")?.startsWith("#"));
+  expect(x402.length).toBeGreaterThanOrEqual(4);
+  for (const a of x402) expect(a.getAttribute("href"), a.textContent ?? "").toBe("/api/quick-start/x402");
+  const footer = screen.getByRole("contentinfo");
+  expect(within(footer).getByRole("link", { name: "x402 Facilitator" }).getAttribute("href")).toBe("/api/quick-start/x402");
 });
