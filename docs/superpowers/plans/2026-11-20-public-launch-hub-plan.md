@@ -25,7 +25,7 @@
 - A browser that kept the explorer's old `301` from `/api/privacy-policy` arrives at `/api/prices-api/privacy-policy`: it must end on the policy, once, with no loop. Task 2.
 - Many people behind one address (an office, a conference) spend the sign-in routes' limit: the dashboard and the pages must keep working for them. Task 5.
 - An instance that starts while Secrets Manager can't be reached: it must answer `503` and recover by itself, without a deploy. Task 6.
-- `CloudFront-Viewer-Address` absent, empty or not an address and a port: counted as one client, never an exception. Task 4.
+- `X-Hub-Viewer-Ip` absent, empty or not an address: counted as one client, never an exception. Task 4.
 - "Get API Key" through a function URL arrives with its form body base64-encoded: the product named in it must still be read. Task 6.
 
 ---
@@ -115,17 +115,17 @@ Stub `window.location.replace` as `src/prices/app/app.spec.tsx` does for `ToHub`
 **Interfaces:**
 - Produces:
   - `rateLimiter(limit: number, windowMs: number, now?: () => number): RateLimiter`, `RateLimiter.hit(key: string): { allowed: boolean; retryAfterSeconds?: number }`: stellar-x402's `apps/portal/src/rate-limit.ts` at `7a5ce70d`, unchanged but for its header.
-  - `clientKey(viewerAddress: string | undefined): string`: the key a request is counted by, from `CloudFront-Viewer-Address`.
+  - `clientKey(viewerIp: string | undefined): string`: the key a request is counted by, from `X-Hub-Viewer-Ip`, which CloudFront's function writes from the viewer's IP address (a bare address, no port).
 
 - [ ] **Step 1: Write the failing tests.**
 
 ```ts
 // client-address.test.ts
-expect(clientKey("198.51.100.10:46532")).toBe("198.51.100.10");
-// One /56 is one client, in either form an IPv6 address and a port may come in:
-expect(clientKey("[2001:db8:abcd:12ff:1::1]:443")).toBe(clientKey("2001:db8:abcd:1200:ffff::2:8080"));
-expect(clientKey("[2001:db8:abcd:1300::1]:443")).not.toBe(clientKey("[2001:db8:abcd:12ff::1]:443"));
-for (const odd of [undefined, "", "garbage", "198.51.100.10", "1.2.3.4:1, 5.6.7.8:2", "[::1"]) {
+expect(clientKey("198.51.100.10")).toBe("198.51.100.10");
+// One /56 is one client:
+expect(clientKey("2001:db8:abcd:12ff:1::1")).toBe(clientKey("2001:db8:abcd:1200:ffff::2"));
+expect(clientKey("2001:db8:abcd:1300::1")).not.toBe(clientKey("2001:db8:abcd:12ff::1"));
+for (const odd of [undefined, "", "garbage", "198.51.100.10:46532", "1.2.3.4, 5.6.7.8", "[::1]", " 198.51.100.10"]) {
   expect(clientKey(odd)).toBe("unknown");
 }
 ```
@@ -133,7 +133,7 @@ for (const odd of [undefined, "", "garbage", "198.51.100.10", "1.2.3.4:1, 5.6.7.
 `rate-limit.test.ts`: the 30th hit in a window is allowed and the 31st isn't, with `retryAfterSeconds` between 1 and 60; a window later the key is allowed again; another key is never affected.
 
 - [ ] **Step 2: Run** `pnpm vitest run --project bff bff/test/rate-limit.test.ts bff/test/client-address.test.ts`. Expected: fail, no such modules.
-- [ ] **Step 3: Implement.** `clientKey` takes the port off (the text after the last `:`, digits only), unwraps `[…]`, checks the rest with `node:net`'s `isIPv4`/`isIPv6`, and for IPv6 keeps the first 56 bits of the expanded address. AWS's guide shows the IPv4 form only (`198.51.100.10:46532`), so both IPv6 forms are accepted.
+- [ ] **Step 3: Implement.** `clientKey` checks the value with `node:net`'s `isIPv4`/`isIPv6` and nothing else (no port, no brackets: CloudFront's function writes `event.viewer.ip` as it is), and for IPv6 keeps the first 56 bits of the expanded address.
 - [ ] **Step 4: Run** the same command. Expected: pass.
 - [ ] **Step 5: Commit** `feat: add a request limiter and the key a client is counted by`.
 
@@ -151,13 +151,13 @@ for (const odd of [undefined, "", "garbage", "198.51.100.10", "1.2.3.4:1, 5.6.7.
   - Refusals: `400 {error: "not_through_the_site"}`; `429 {error: "rate_limited"}` with `Retry-After`; for `GET auth/login`, `GET auth/callback` and `POST auth/issue` over the limit, `303` to `${base}login?signin=busy`.
   - The sign-in page's outcome `busy`, shown as `data-testid="signin-busy"`: "Too many sign-in attempts from your network. Try again in a minute."
 
-- [ ] **Step 1: Write the failing tests** in `bff/test/guards.test.ts`, with `app.test.ts`'s settings, fakes and status rule, a fixed `now`, and requests that carry `cloudfront-viewer-address`:
+- [ ] **Step 1: Write the failing tests** in `bff/test/guards.test.ts`, with `app.test.ts`'s settings, fakes and status rule, a fixed `now`, and requests that carry `x-hub-viewer-ip`:
   - With `originSecret: { current: "a".repeat(64), previous: "b".repeat(64) }`: no header, a wrong one and one of another length each get `400 not_through_the_site`; `current` and `previous` each pass. A refused request is not counted: 200 of them, then `GET me` with the header answers `200`. The check comes before the `Origin` check: a `POST` with neither answers `not_through_the_site`, not `bad_origin`.
   - Without `originSecret`: `GET me` with no header answers `200`.
   - From one address, 30 `GET auth/login` answer `303` to Discord and the 31st `303` to `/api/login?signin=busy`; 60 seconds later, Discord again. The same 31st for `GET auth/callback` and for `POST auth/issue`.
   - From one address, 120 `GET me` answer `200` and the 121st `429 rate_limited` with an integer `Retry-After` of 1 to 60. Another address still gets `200`. Two IPv6 addresses of one /56 share the count.
   - The two budgets are apart: after 31 `auth/login`, `GET me` answers `200`; after 121 `me`, `auth/login` still goes to Discord.
-  - A request with no `cloudfront-viewer-address` is counted with every other such request.
+  - A request with no `x-hub-viewer-ip` is counted with every other such request.
   - `LoginPage`: at `/login?signin=busy` the line above is shown and the query is taken off the address, as for the other outcomes.
 - [ ] **Step 2: Run** `pnpm vitest run --project bff bff/test/guards.test.ts`. Expected: fail.
 - [ ] **Step 3: Implement** three middlewares in `createHub`, in this order, before the routes: the header (`timingSafeEqual` on equal lengths, against `current` then `previous`), the limit (two limiters; a path under `${base}hub/auth/` spends the first, any other the second), then the `Origin` check that is there today. `noStore` stays first. Update the function's doc comment and the README's backend section with the two refusals and the order. If a test in `app.test.ts` now runs into a limit, it builds a hub of its own.
