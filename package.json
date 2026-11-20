@@ -11,9 +11,9 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.prices.json --noEmit && tsc -p bff/tsconfig.json --noEmit && tsc -p infra/tsconfig.json --noEmit",
-    "infra:synth": "cdk synth --app \"node infra/bin/hub.ts\" --output infra/cdk.out",
-    "infra:diff": "cdk diff --app \"node infra/bin/hub.ts\" --output infra/cdk.out",
-    "infra:deploy": "cdk deploy --app \"node infra/bin/hub.ts\" --output infra/cdk.out",
+    "infra:synth": "cdk synth --app \"node --experimental-strip-types infra/bin/hub.ts\" --output infra/cdk.out",
+    "infra:diff": "cdk diff --app \"node --experimental-strip-types infra/bin/hub.ts\" --output infra/cdk.out",
+    "infra:deploy": "cdk deploy --app \"node --experimental-strip-types infra/bin/hub.ts\" --output infra/cdk.out",
     "test": "vitest run"
   },
   "dependencies": {
