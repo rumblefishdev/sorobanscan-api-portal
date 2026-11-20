@@ -124,6 +124,14 @@ old portal's file of that name, which is the same document.
 
 Nothing serves it yet: `https://sorobanscan.com/api/assets/…` still answers `302` to `/api/`.
 
+The explorer serves from the bundle only `/api/`, `/api/assets/*` and the addresses under six
+first names: `login`, `dashboard`, `quick-start`, `docs`, `privacy-policy`, `prices-api`
+(`API_HUB_PAGES` in its `infra/src/lib/cloudfront-functions/api-hub-routing.ts`). Any other first
+name answers `302` to `/api/`. So a new page at a new first name (`/api/status`), or a file at the
+bundle's top level (`public/robots.txt` served as `/api/robots.txt`), needs that list changed and
+the explorer's `-Delivery` released before the bundle that uses it is uploaded. A page or a file
+under one of the six names needs nothing there.
+
 ### 4. The explorer: the backend
 
 In `soroban-block-explorer`, a pull request that adds to `infra/envs/production.json`:
@@ -306,8 +314,12 @@ The next request starts a new instance: its log line `REPORT` then has an `Init 
 stack's next deploy sets the description back to nothing; that is harmless.
 
 **The header's secret (`origin-secret`).** CloudFront's copy of `current` is read by CloudFormation
-only when the explorer's template changes, which is what `originSecretRevision` is for. The order
-matters: at every moment the function must accept what CloudFront sends.
+whenever it updates the explorer's distribution, for any reason; raising `originSecretRevision`
+is what forces that update. The order matters: at every moment the function must accept what
+CloudFront sends. So do steps 1 and 2 one right after the other, with no release of the
+explorer's `-Delivery` in between: one that changes the distribution would send the new value
+while the running instances still know only the old one, and every call to `/api/hub/*` would be
+`400 not_through_the_site` until step 2.
 
 1. Put the new value as `current` and the old one as `previous`:
 
