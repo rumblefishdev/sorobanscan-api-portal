@@ -58,9 +58,9 @@ Put its client secret in Secrets Manager, without it landing in the shell's hist
 
 ```sh
 read -rs DISCORD_CLIENT_SECRET
-AWS_PROFILE=stellar aws secretsmanager create-secret --region eu-central-1 \
-  --name sorobanscan-hub/production/discord-client-secret \
-  --secret-string "$DISCORD_CLIENT_SECRET"
+printf %s "$DISCORD_CLIENT_SECRET" | AWS_PROFILE=stellar aws secretsmanager create-secret \
+  --region eu-central-1 --name sorobanscan-hub/production/discord-client-secret \
+  --secret-string file:///dev/stdin
 unset DISCORD_CLIENT_SECRET
 ```
 
@@ -68,7 +68,8 @@ The Discord application's client id is not secret: it is the `discordClientId` o
 
 ### 2. The stack
 
-From the repo's root, with the Discord application's client id:
+From the repo's root, on an up-to-date `main` once all three pull requests are merged (not on a
+feature branch), with the Discord application's client id:
 
 ```sh
 AWS_PROFILE=stellar corepack pnpm infra:diff -c discordClientId=<client id>
@@ -100,6 +101,8 @@ look at the function URL directly first. Anything but `400` here:
 - `503` with `sign_in_not_configured`: the function could not read a secret. Look in its log
   group for `startup_failed` (below), fix the secret or the role, and call again; the function tries
   again by itself within 10 seconds of the last failure.
+- `502`: the function failed to start or to import: look in its log group for
+  `Runtime.ImportModuleError` or an init error, fix it and redeploy.
 - `403`: the function URL's public permission is missing. The stack sets it; look at the function's
   "Function URL" configuration in the console before going on.
 
@@ -173,11 +176,12 @@ repo's root.
 Pages, from the bundle (`curl -sI` prints the status line and the headers):
 
 ```sh
-curl -sI https://sorobanscan.com/api | head -n 1                  # 301, Location: /api/
+curl -sI https://sorobanscan.com/api | grep -i -e '^HTTP' -e '^location'  # 301, Location: /api/
 curl -sI https://sorobanscan.com/api/ | head -n 1                 # 200
 curl -sI https://sorobanscan.com/api/quick-start/x402 | head -n 1 # 200
 curl -sI https://sorobanscan.com/api/docs/prices | head -n 1      # 200
 curl -sI https://sorobanscan.com/api/docs/x402/anything | head -n 1  # 200: the page then goes to /api/docs/x402
+curl -sI https://sorobanscan.com/api/dashboard/prices | head -n 1 # 200
 curl -sI https://sorobanscan.com/api/login | head -n 1            # 200
 curl -sI https://sorobanscan.com/api/dashboard | head -n 1        # 200: the page itself sends a visitor with no session to /api/login
 curl -sI https://sorobanscan.com/api/privacy-policy | head -n 1   # 200
@@ -205,23 +209,27 @@ curl -si https://<FunctionUrlHost>/api/hub/me                                   
 ```
 
 The limit: 30 a minute to the three that call Discord, 120 a minute to the rest (`GET me` is not
-counted). `auth/login` only redirects to Discord and asks nothing of it, so it is safe to spend;
-after this, wait a minute:
+counted). The count is kept in each instance's memory, so these counts hold per instance: with
+several instances warm, sequential calls can land on different ones. More `401`s than below, or no
+`429`, means the calls were spread over instances; repeat the loop, or read it as expected.
+`auth/login` only redirects to Discord and asks nothing of it, so it is safe to spend:
 
 ```sh
-for i in $(seq 1 35); do curl -s -o /dev/null -w '%{http_code}\n' https://sorobanscan.com/api/hub/auth/login; done | sort | uniq -c
+for i in $(seq 1 35); do curl -s -o /dev/null -w '%{http_code} %{redirect_url}\n' https://sorobanscan.com/api/hub/auth/login; done | sed -E 's#(https://discord.com/).*#\1…#' | sort | uniq -c
 ```
 
 The three that open as pages (`auth/login`, `auth/callback`, `auth/issue`) answer an over-limit
-call with `303` to `/api/login?signin=busy`, not `429`: from the 31st call the loop prints `303`
-still, and a call with `curl -sI` shows that `Location`. Every other route answers `429`, after
-120 calls in a minute:
+call with `303` to `/api/login?signin=busy`, not `429`. Expected: 30 of `303 https://discord.com/…`
+and then 5 of `303 https://sorobanscan.com/api/login?signin=busy`. Every other route answers `429`,
+after 120 calls in a minute:
 
 ```sh
 for i in $(seq 1 130); do curl -s -o /dev/null -w '%{http_code}\n' https://sorobanscan.com/api/hub/x402/account; done | sort | uniq -c
 ```
 
-Expected: 120 of `401` and 10 of `429`.
+Expected: 120 of `401` and 10 of `429`. Your own address is then over the limit for up to a
+minute: wait a minute before the browser checks below, or the dashboard's `account` calls are
+answered `429`.
 
 Old addresses:
 
@@ -305,14 +313,19 @@ matters: at every moment the function must accept what CloudFront sends.
 
    ```sh
    OLD=$(AWS_PROFILE=stellar aws secretsmanager get-secret-value --region eu-central-1 \
-     --secret-id sorobanscan-hub/production/origin-secret --query SecretString --output text | jq -r .current)
+     --secret-id sorobanscan-hub/production/origin-secret --query SecretString --output text \
+     | jq -r 'if has("previous") then error("finish the last rotation first") else .current end')
    NEW=$(AWS_PROFILE=stellar aws secretsmanager get-random-password --region eu-central-1 \
      --password-length 64 --exclude-punctuation --query RandomPassword --output text)
-   AWS_PROFILE=stellar aws secretsmanager put-secret-value --region eu-central-1 \
+   [ -n "$OLD" ] && jq -n --arg c "$NEW" --arg p "$OLD" '{current: $c, previous: $p}' \
+     | AWS_PROFILE=stellar aws secretsmanager put-secret-value --region eu-central-1 \
      --secret-id sorobanscan-hub/production/origin-secret \
-     --secret-string "$(jq -n --arg c "$NEW" --arg p "$OLD" '{current: $c, previous: $p}')"
+     --secret-string file:///dev/stdin
    unset OLD NEW
    ```
+
+   If `previous` is already set, the first command prints `finish the last rotation first`, `OLD`
+   stays empty and nothing is put: finish that rotation (step 5) before starting another.
 
 2. Restart the function (the command above). It accepts both values from then on.
 3. In the explorer, raise `originSecretRevision` (`"1"` to `"2"`, and so on) in
