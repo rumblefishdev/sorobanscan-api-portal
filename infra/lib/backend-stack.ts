@@ -29,14 +29,17 @@ export class BackendStack extends Stack {
     }
 
     const generated = { passwordLength: 64, excludePunctuation: true } as const;
+    // Kept when the stack is deleted or a secret replaced, so its value outlives a mistake; not
+    // when the stack's first deploy fails. A rollback that kept them would leave both names taken,
+    // and the next deploy, which must create them, would fail with "already exists".
     const sessionSecret = new Secret(this, "SessionSecret", {
       secretName: `${SECRET_PREFIX}/session`,
-      removalPolicy: RemovalPolicy.RETAIN,
+      removalPolicy: RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE,
       generateSecretString: generated,
     });
     const originSecret = new Secret(this, "OriginSecret", {
       secretName: `${SECRET_PREFIX}/origin-secret`,
-      removalPolicy: RemovalPolicy.RETAIN,
+      removalPolicy: RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE,
       generateSecretString: {
         ...generated,
         secretStringTemplate: "{}",
