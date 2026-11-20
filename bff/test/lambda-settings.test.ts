@@ -57,6 +57,19 @@ describe("loadLambdaSettings", () => {
     expect(settings.originSecret).toEqual({ current: "c".repeat(32), previous: "p".repeat(32) });
   });
 
+  it("names why a read failed by the error's name only, never its message", async () => {
+    class AccessDeniedException extends Error {
+      override name = "AccessDeniedException";
+    }
+    const failing = async () => {
+      throw new AccessDeniedException("arn:aws:secretsmanager:eu-central-1:1:secret:x denied");
+    };
+    const text = await message(loadLambdaSettings(ENV, failing));
+    expect(text).toContain("AccessDeniedException");
+    expect(text).not.toContain("arn:aws");
+    expect(text).not.toContain("denied");
+  });
+
   it.each(Object.keys(ENV))("rejects without %s, naming it", async (name) => {
     expect(await message(loadLambdaSettings({ ...ENV, [name]: undefined }, reader()))).toContain(
       name,
