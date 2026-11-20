@@ -493,6 +493,8 @@ describe("the x402 tab", () => {
   it.each([
     ["502 x402_unavailable", () => answer(502, { error: "x402_unavailable" })],
     ["503 x402_busy", () => answer(503, { error: "x402_busy" })],
+    // x402's own: its key store out of reach, passed on by the hub under x402's status.
+    ["502 key_unavailable", () => answer(502, { error: "key_unavailable" })],
     ["503 product_not_configured", () => answer(503, { error: "product_not_configured" })],
     ["400 unknown_product", () => answer(400, { error: "unknown_product" })],
     ["a 200 that isn't JSON", () => new Response("<!doctype html>", { status: 200 })],
@@ -516,7 +518,7 @@ describe("the x402 tab", () => {
     [
       "429 rate_limited",
       answer(429, { error: "rate_limited" }),
-      "Too many requests for your account. Wait a minute and try again. (rate_limited)",
+      "too many requests for your account — wait a minute and try again (rate_limited)",
     ],
     [
       "502 invalid_token",
