@@ -518,7 +518,7 @@ describe("the x402 tab", () => {
     [
       "429 rate_limited",
       answer(429, { error: "rate_limited" }),
-      "too many requests for your account — wait a minute and try again (rate_limited)",
+      "too many requests — wait a minute and try again (rate_limited)",
     ],
     [
       "502 invalid_token",

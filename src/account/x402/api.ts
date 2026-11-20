@@ -130,7 +130,7 @@ const WORDS: Record<string, string> = {
   bad_origin: "the request didn't come from this page — reload it and try again",
   no_key: "you have no API key",
   key_revoked: "your API key was revoked",
-  rate_limited: "too many requests for your account — wait a minute and try again",
+  rate_limited: "too many requests — wait a minute and try again",
   invalid_token:
     "x402 refused the hub's request — this is ours to fix, so tell us if it keeps happening",
   internal: "the hub failed — try again, and tell us if it keeps happening",
