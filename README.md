@@ -7,11 +7,17 @@ moved in from stellar-prices-api with its own Discord sign-in and dashboard. Lat
 holds the shared sign-in and dashboard (`/api/login`, `/api/dashboard`), which replace the Prices
 portal's own.
 
-Neither is on production from this repo. The hub at `sorobanscan.com/api/` today is still the
-explorer's own, and the Prices portal at `sorobanscan.com/api/prices-api/` is still the copy in
-stellar-prices-api's `web/portal`, deployed from there. That copy stays the deployed one until
-the switch, step 3 of the cutover in
-[the shared sign-in spec](docs/superpowers/specs/2026-11-17-shared-sign-in-design.md).
+## On production
+
+Once the start is done (the deployment is in [the runbook](docs/runbook.md)), the explorer's
+CloudFront distribution serves `https://sorobanscan.com/api/` from this repo: the pages from the
+bucket `production-soroban-explorer-api-spa`, under `api/`, and `/api/hub/*` from the backend, a
+Lambda behind a function URL that only the distribution reaches (the runbook has the order, the
+checks, the way back and how each secret is changed). The Prices portal's old files stay in the
+bucket, so the way back shows it working. The x402 Facilitator's page, `/api/x402-facilitator/`,
+is not served: the address answers `302` to `/api/`. Until the start the hub at
+`sorobanscan.com/api/` is the explorer's own, and the Prices portal at `/api/prices-api/` is the
+copy in stellar-prices-api's `web/portal`.
 
 React 19, Vite 8, react-router 8, TypeScript, Vitest; the Prices portal and the sign-in page and
 dashboard also MUI 7 with emotion.
@@ -30,7 +36,7 @@ pnpm install
 pnpm dev        # the hub at /api/, the Prices portal at /api/prices-api/, the backend at /api/hub/
 pnpm test       # the page's and the backend's tests, and builds that check the page's files
 pnpm typecheck  # the hub, the Prices portal with its own options, then the backend
-pnpm build      # the bundle in dist/
+VITE_PRODUCTS=prices,x402 pnpm build   # the bundle in dist/, as production's has it
 pnpm preview    # dist/ served locally, under the same prefix, with dev's proxy and backend
 ```
 
@@ -49,7 +55,7 @@ Vite's proxy error.
 ## The prefix: `VITE_BASE_PATH`
 
 The bundle is built for one prefix, `/api/` unless `VITE_BASE_PATH` says another
-(`VITE_BASE_PATH=/api/next/ pnpm build`, or the line `VITE_BASE_PATH=/api/next/` in a `.env`
+(`VITE_PRODUCTS=prices,x402 VITE_BASE_PATH=/api/next/ pnpm build`, or the line `VITE_BASE_PATH=/api/next/` in a `.env`
 file, which the environment overrides). Vite's `base` and the router's `basename` both follow
 it, so every file the page asks for is under the prefix, and the Prices portal is at
 `prices-api/` under it. The hub's links to the bundle's own pages follow it too (`src/links.ts`:
@@ -90,7 +96,7 @@ either.
 `https://prices-api.sorobanscan.com`:
 
 ```sh
-VITE_PORTAL_API_ORIGIN=https://prices-api.sorobanscan.com pnpm build
+VITE_PRODUCTS=prices,x402 VITE_PORTAL_API_ORIGIN=https://prices-api.sorobanscan.com pnpm build
 ```
 
 Without it every backend URL is relative (`/api/config`, `/api/auth/login`), which only the dev
@@ -165,8 +171,16 @@ on x402's routes (below). Without it the three routes with a session (`account`,
 `key/revoke`) answer 400 `unknown_product`, without a session they answer 401 `not_signed_in`, and
 any other path under `/api/hub/x402/` 400 `unknown_route`.
 
-Only the dev and preview servers run it: deploying it (in AWS, beside the explorer's CloudFront,
-the cutover's step 1) is a later plan.
+On production it is a Lambda (`bff/src/lambda.ts`, Node 22) behind a function URL, made by the CDK
+app in `infra/` (`pnpm infra:synth`, `infra:diff`, `infra:deploy`, each with
+`-c discordClientId=<id>`). Its plain settings are the function's environment: `HUB_PUBLIC_ORIGIN`
+(`https://sorobanscan.com`), `HUB_PRODUCTS` (`prices,x402`) and `DISCORD_CLIENT_ID`. Three more
+name secrets in Secrets Manager, which an instance reads when it starts and never from the
+environment: `HUB_DISCORD_SECRET_NAME` (Discord's client secret), `HUB_SESSION_SECRET_NAME` (the
+session's) and `HUB_ORIGIN_SECRET_NAME` (the header CloudFront sends, check 1 below); the products'
+token secrets are read by the names in their own settings. While an instance can't read one, every
+request is 503 `sign_in_not_configured` and the next read waits 10 seconds. The stack reserves 20
+concurrent executions, which bounds the limit below, kept in each instance's memory.
 
 Before any route, after its `no-store` headers, the backend checks a request in this order:
 
@@ -397,22 +411,12 @@ documents, which are plain files: `/api/docs/x402/openapi.json` and
 
 ## Putting it on production
 
-Nothing in this repo uploads it, and there is no preview address (the shared sign-in spec's
-decision 10): the hub and the Prices portal go up together at their real addresses, `/api/` and
-`/api/prices-api/`, at the switch, step 3 of the spec's cutover, and are tried there. The
-production build must name the Prices backend, or the Prices pages reach none:
-`VITE_PORTAL_API_ORIGIN=https://prices-api.sorobanscan.com pnpm build`.
-
-The bundle goes by hand to the bucket the product pages are served from, under `api/index.html`
-and `api/assets/` and never under `api/prices-api/`, so the old Prices portal's files stay where
-they are. The explorer's CloudFront then serves `/api`, `/api/`, `/api/assets/*`, `/api/login`,
-`/api/dashboard*`, `/api/quick-start*`, `/api/docs*` (x402's OpenAPI document,
-`api/docs/x402/openapi.json`, goes up with the bundle), `/api/privacy-policy` and
-`/api/prices-api/*` from it, and `quick-start` and `docs` leave its list of old Prices routes
-(`PRICES_PORTAL_LEGACY_ROUTES`), which today answers both with a `301`; reverting that change
-brings the old hub and the old Prices portal back at once. The cutover lists the steps before
-and after it; the hub spec's section "Putting it on production" says how the upload is done
-(two `aws s3 sync` runs and an invalidation).
+By hand, from [the runbook](docs/runbook.md). The upload is `AWS_PROFILE=stellar pnpm run upload`
+(`--dryrun` first): `scripts/upload-bundle.sh` builds with
+`VITE_PRODUCTS=prices,x402 VITE_PORTAL_API_ORIGIN=https://prices-api.sorobanscan.com pnpm build`
+(a build without `VITE_PRODUCTS=prices,x402` sends every x402 link to the Prices tab) and copies
+`dist/` to `s3://production-soroban-explorer-api-spa/api/` in two `aws s3 sync` calls, never
+deleting anything, so the old Prices portal's files and earlier builds' assets stay.
 
 ## The text
 

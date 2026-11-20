@@ -1,0 +1,3 @@
+# esbuild's postinstall only checks its binary, which arrives as an optional dependency anyway.
+allowBuilds:
+  esbuild: false

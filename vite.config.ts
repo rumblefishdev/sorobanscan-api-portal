@@ -191,6 +191,16 @@ export default defineConfig(({ mode }) => {
           extends: true,
           test: { name: "bff", include: ["bff/test/**/*.test.ts"], environment: "node" },
         },
+        // The CDK stack, synthesized in Node. Synthesis is slow on a cold start.
+        {
+          extends: true,
+          test: {
+            name: "infra",
+            include: ["infra/test/**/*.test.ts"],
+            environment: "node",
+            testTimeout: 60_000,
+          },
+        },
       ],
     },
   };

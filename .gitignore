@@ -11,3 +11,5 @@ dist
 .env*.local
 .env.development
 .env.production
+
+cdk.out
