@@ -30,7 +30,7 @@ if [ ! -f dist/index.html ]; then
 fi
 # The x402 page's old address must not be in the bundle: its host, x402-facilitator.sorobanscan.com,
 # legitimately is, so the check is for the address on sorobanscan.com.
-if grep -r "/api/x402-facilitator" dist; then
+if grep -rl "/api/x402-facilitator" dist; then
   echo "dist names /api/x402-facilitator: a link still goes to the page that is gone" >&2
   exit 1
 fi
