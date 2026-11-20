@@ -160,7 +160,7 @@ for (const odd of [undefined, "", "garbage", "198.51.100.10:46532", "1.2.3.4, 5.
   - A request with no `x-hub-viewer-ip` is counted with every other such request.
   - `LoginPage`: at `/login?signin=busy` the line above is shown and the query is taken off the address, as for the other outcomes.
 - [ ] **Step 2: Run** `pnpm vitest run --project bff bff/test/guards.test.ts`. Expected: fail.
-- [ ] **Step 3: Implement** three middlewares in `createHub`, in this order, before the routes: the header (`timingSafeEqual` on equal lengths, against `current` then `previous`), the limit (two limiters; a path under `${base}hub/auth/` spends the first, any other the second), then the `Origin` check that is there today. `noStore` stays first. Update the function's doc comment and the README's backend section with the two refusals and the order. If a test in `app.test.ts` now runs into a limit, it builds a hub of its own.
+- [ ] **Step 3: Implement** three middlewares in `createHub`, in this order, before the routes: the header (`timingSafeEqual` on equal lengths, against `current` then `previous`), the limit (two limiters; `GET auth/login`, `GET auth/callback` and `POST auth/issue` spend the first, every other route but `GET me` the second, `GET me` none: see the spec's "The request limit"), then the `Origin` check that is there today. `noStore` stays first. Update the function's doc comment and the README's backend section with the two refusals and the order. If a test in `app.test.ts` now runs into a limit, it builds a hub of its own.
 - [ ] **Step 4: Run** `pnpm test && pnpm typecheck`. Expected: pass.
 - [ ] **Step 5: Commit** `feat: limit requests and answer only through CloudFront`.
 
