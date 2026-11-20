@@ -17,8 +17,8 @@ import { color, font, radius } from "../prices/theme/tokens";
 import type { Product } from "./products";
 
 /**
- * The pages the bar is drawn over: this tree's dashboard, quick start and API reference, and the
- * Prices portal's landing page and privacy policy.
+ * The pages the bar is drawn over: this tree's dashboard, quick start, API reference and privacy
+ * policy, and the Prices portal's landing page.
  */
 export type AccountNavbarPage =
   | "dashboard"
@@ -28,7 +28,12 @@ export type AccountNavbarPage =
   | "privacy-policy";
 
 /** The pages among them that are this tree's own, which the bar reaches by router links. */
-const OWN_PAGES: readonly AccountNavbarPage[] = ["dashboard", "quick-start", "docs"];
+const OWN_PAGES: readonly AccountNavbarPage[] = [
+  "dashboard",
+  "quick-start",
+  "docs",
+  "privacy-policy",
+];
 
 /**
  * The bar's height, less its border, at each width: one 52 px row from `sm`; at `xs` two, the
@@ -67,8 +72,8 @@ export function AccountNavbar({
   /** A sign-out is in flight: the button is shut, so a second press sends no second `POST`. */
   signingOut?: boolean;
   /**
-   * The page the bar is over, whose link is underlined. The Prices portal's landing page and
-   * privacy policy are under the bar and not in it, so nothing is underlined there.
+   * The page the bar is over, whose link is underlined. The privacy policy and the Prices
+   * portal's landing page are under the bar and not in it, so nothing is underlined there.
    */
   current?: AccountNavbarPage;
   /** The API the page under the bar is about: the bar's links then open that API's tab. */

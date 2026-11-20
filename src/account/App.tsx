@@ -4,6 +4,7 @@ import { Navigate, Route, Routes, useLocation, useParams } from "react-router";
 import { DashboardPage } from "./DashboardPage";
 import { DocsPage } from "./docs/DocsPage";
 import { LoginPage } from "./LoginPage";
+import { PrivacyPolicyPage } from "./PrivacyPolicyPage";
 import { useSessionControl } from "./session";
 
 /**
@@ -31,8 +32,8 @@ function ToLanding() {
 
 /**
  * The account pages: `/login` and `/dashboard` (with `/dashboard/<product>` for a tab), one sign-in
- * and one dashboard for every API, and the two pages open to everybody, `/quick-start/<product>`
- * and `/docs/<product>` (`docs/DocsPage.tsx`). The session is asked for once, here, so the sign-in
+ * and one dashboard for every API, and the pages open to everybody, `/quick-start/<product>` and
+ * `/docs/<product>` (`docs/DocsPage.tsx`) and `/privacy-policy` (`PrivacyPolicyPage.tsx`). The session is asked for once, here, so the sign-in
  * page's forward to the dashboard doesn't ask again; the sign-in page asks again only after a
  * sign-in in a second window.
  */
@@ -47,6 +48,7 @@ export function App() {
         element={<DocsPage kind="quick-start" session={session} />}
       />
       <Route path="/docs/:product?" element={<DocsPage kind="docs" session={session} />} />
+      <Route path="/privacy-policy" element={<PrivacyPolicyPage session={session} />} />
       <Route path="/quick-start/:product/*" element={<ToApiPage kind="quick-start" />} />
       <Route path="/docs/:product/*" element={<ToApiPage kind="docs" />} />
       {/* `src/boot.js` boots this tree for the account pages' addresses only; any other address
