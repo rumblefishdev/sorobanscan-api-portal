@@ -253,11 +253,14 @@ In this repo: the Lambda's entry, its infrastructure as a CDK app, and a runbook
 
 Two layers, both in this repo:
 
-- **By address, in the app:** 30 requests a minute to `auth/*`, 120 a minute to the rest, as
-  stellar-x402's portal backend first had them. The address is CloudFront's
-  `X-Hub-Viewer-Ip`, which CloudFront's function writes from the viewer's address (above); an
-  IPv6 address counts by its /56, as in that
-  backend. Over the limit: `429 rate_limited` with `Retry-After`. For the three addresses a
+- **By address, in the app:** 30 requests a minute to the three that call Discord
+  (`auth/login`, `auth/callback`, `auth/issue`), 120 a minute to the rest, as stellar-x402's
+  portal backend first had them, except `GET me`, which isn't counted: it reads the request's
+  cookie and calls nobody, and the sign-in page asks it every 1.5 s while a sign-in window is
+  open, so counting it would spend the dashboard's budget and report a sign-in that succeeded
+  as failed (found in review, 2026-11-20). `auth/logout` calls nobody either and is in the 120.
+  The address is `X-Hub-Viewer-Ip`, which CloudFront's function writes from the viewer's
+  address (above); an IPv6 address counts by its /56, as in that backend. Over the limit: `429 rate_limited` with `Retry-After`. For the three addresses a
   browser opens as a page (`auth/login`, `auth/callback`, `auth/issue`) the refusal is a page, as
   `auth/issue`'s refusals are today.
 - **A ceiling on instances** (reserved concurrency) of 20. The count above is kept in each
@@ -360,7 +363,7 @@ nobody touched. Keys issued through the hub are the products' own and stay.
 - The x402 links go to `/api/quick-start/x402`.
 - `/api/prices-api/` stays `noindex` (akot, 2026-11-17), although the start is public; the
   privacy policy, at its new address, is indexed.
-- The numbers: 30 and 120 a minute, the ceiling of 20.
+- The numbers: 30 and 120 a minute, the ceiling of 20; `me` not counted.
 - `400`, not `403`, for a call that didn't come through CloudFront.
 - The client's address in a header of our own, `X-Hub-Viewer-Ip`, written by CloudFront's function
   from `event.viewer.ip`, and not CloudFront's `CloudFront-Viewer-Address`: AWS's guide doesn't say
