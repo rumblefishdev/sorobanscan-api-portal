@@ -892,6 +892,32 @@ describe("the Prices tab's Get API Key window", () => {
     },
   );
 
+  // Over the backend's limit on its sign-in routes, "Get API Key" is sent to the sign-in page as
+  // `busy`: the sign-in page's one line, never "We could not create your key".
+  it("says there were too many attempts when the window lands with ?signin=busy", async () => {
+    stubHub({ account: () => answer(200, NO_KEY) });
+    opens({ closed: false, focus: vi.fn() });
+    renderAt("/api/dashboard/prices");
+    fireEvent.submit(await getKeyForm());
+    await act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          origin: window.location.origin,
+          data: { source: "stellar-portal-oauth", search: "?signin=busy" },
+        }),
+      );
+    });
+    const busy = await screen.findByTestId("issue-busy");
+    expect(busy.textContent).toBe(
+      "Too many sign-in attempts from your network. Try again in a minute.",
+    );
+    expect(screen.getByRole("alert")).toBe(busy);
+    expect(screen.queryByTestId("issue-failed")).toBeNull();
+    // Get API Key is there again, for when the minute is out.
+    const button = (await screen.findByRole("button", { name: "Get API Key" })) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+  });
+
   it("is the plain form, posted in the tab, where the browser opens no window", async () => {
     stubHub({ account: () => answer(200, NO_KEY) });
     opens(null);

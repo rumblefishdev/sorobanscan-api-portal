@@ -18,8 +18,9 @@ export interface GetKeyControl {
 }
 
 /**
- * Why a sign-in is refused, as the backend names it in `?signin=` (`Refusal` in `bff/src/app.ts`).
- * Each is an issue's outcome too, with the same meaning, so the tab has words for it.
+ * Why a sign-in is refused, as the backend names it in `?signin=` (`Refusal` in `bff/src/app.ts`),
+ * and `busy`, its limit on the sign-in routes, where `POST auth/issue` and the callback are sent
+ * over it. Each is an issue's outcome too, with the same meaning, so the tab has words for it.
  */
 const SIGNIN_REFUSALS: readonly IssueOutcome[] = [
   "cancelled",
@@ -27,6 +28,7 @@ const SIGNIN_REFUSALS: readonly IssueOutcome[] = [
   "not_member",
   "pending_rules",
   "unknown",
+  "busy",
 ];
 
 /**

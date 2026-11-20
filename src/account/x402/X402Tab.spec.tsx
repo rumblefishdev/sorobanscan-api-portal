@@ -629,6 +629,8 @@ describe("the x402 tab's Get API Key window", () => {
     ["unknown", "issue-unknown"],
     ["cancelled", "issue-cancelled"],
     ["failed", "issue-failed"],
+    // The backend's limit on its sign-in routes, which refuses an issue's too.
+    ["busy", "issue-busy"],
     // Not a reason the sign-in page has: no key was issued, and that is all that is known.
     ["issued", "issue-failed"],
     ["bogus", "issue-failed"],
