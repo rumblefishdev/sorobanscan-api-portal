@@ -11,7 +11,7 @@ The pieces:
 
 | Piece | Where | Made by |
 | --- | --- | --- |
-| The backend: one Lambda with a function URL, its log group, two generated secrets | the stack `SorobanscanHub-production-Backend` (`infra/`) | `pnpm infra:deploy` |
+| The backend: the Lambda `sorobanscan-hub-production-backend` with a function URL, its log group, two generated secrets, the SSM parameter with the URL's host, two alarms | the stack `SorobanscanHub-production-Backend` (`infra/`) | `pnpm infra:deploy` |
 | The pages: `index.html`, `assets/`, the two OpenAPI documents | the bucket `production-soroban-explorer-api-spa`, under `api/` | `pnpm upload` |
 | The routing: `/api/hub/*` to the Lambda, the rest of `/api/` to the bucket | the explorer's CloudFront distribution (`soroban-block-explorer`, `infra/envs/production.json`, setting `apiHub`) | a release of the explorer's stack `Explorer-production-Delivery` |
 
@@ -25,6 +25,16 @@ The secrets, all in Secrets Manager, `eu-central-1`, under `sorobanscan-hub/prod
 | `prices-token`, `x402-token` | JSON `{"current": "…", "previous": "…"?}`: the tokens' secrets shared with the two products | already there; changed as the README's "The token to Prices" and "The token to x402" say |
 
 No value is in git, in a build or in a log. Do not paste one into a ticket or a chat.
+
+The function URL's host (`<id>.lambda-url.eu-central-1.on.aws`) is not a secret, since the header
+is the lock, but it is kept out of git and out of anything public all the same. Anyone who has
+it can call the function directly: each such call is answered `400` before anything is read, but
+it is an invocation, counted against the function's 20 instances, so a flood of them throttles
+the site's own calls. The stack writes it into the SSM parameter
+`/sorobanscan-hub/production/backend-host` (`eu-central-1`), where the explorer's stack reads it
+when it deploys; it is in neither repo, and the stack has no output with it, so a deploy never
+prints it. Never paste it into a ticket, a chat, a pull request or a screenshot. If it leaked,
+see "If the function URL's host leaked".
 
 ## Before the first deploy
 
@@ -56,6 +66,23 @@ Both must answer `ResourceNotFoundException`. A date is a secret waiting out its
 exists". Such a secret was made by the failed deploy and nothing has read it, so remove it at once
 with `aws secretsmanager delete-secret --force-delete-without-recovery --secret-id <name>`.
 
+The two alarms (below, "The alarms") post to stellar-x402's topic `x402-production-alarms`, which
+Amazon Q Developer (Chatbot) sends to Slack's `#stellar-x402-bot`. It is in the same account and
+region, and its policy is SNS's default, which lets the account's own CloudWatch alarms publish
+(stellar-x402's `infra/src/lib/stacks/alarms-stack.ts` never replaces it): nothing changes there.
+Its ARN is the stack's context value `alarmTopicArn`, given on the command line, so the account's
+id stays out of git. Read it from stellar-x402's stack:
+
+```sh
+TOPIC=$(AWS_PROFILE=stellar aws cloudformation describe-stacks --region eu-central-1 \
+  --stack-name X402-production-Alarms \
+  --query "Stacks[0].Outputs[?OutputKey=='AlarmTopicArn'].OutputValue" --output text)
+echo "$TOPIC"   # arn:aws:sns:eu-central-1:<account>:x402-production-alarms
+```
+
+An error or an empty line: stellar-x402's alarms are not deployed in this account; stop and ask
+there. The deploy commands below use `$TOPIC`.
+
 The four pull requests of the launch are merged: three in this repo (the pages, the backend's
 guards, the Lambda with its stack and this runbook) and the explorer's `apiHub` setting.
 Nothing is deployed before that.
@@ -85,15 +112,19 @@ The Discord application's client id is not secret: it is the `discordClientId` o
 ### 2. The stack
 
 From the repo's root, on an up-to-date `main` once all three pull requests are merged (not on a
-feature branch), with the Discord application's client id:
+feature branch), with the Discord application's client id and the topic's ARN (`$TOPIC`, above):
 
 ```sh
-AWS_PROFILE=stellar corepack pnpm infra:diff -c discordClientId=<client id>
-AWS_PROFILE=stellar corepack pnpm infra:deploy -c discordClientId=<client id>
+AWS_PROFILE=stellar corepack pnpm infra:diff -c discordClientId=<client id> -c alarmTopicArn="$TOPIC"
+AWS_PROFILE=stellar corepack pnpm infra:deploy -c discordClientId=<client id> -c alarmTopicArn="$TOPIC"
 ```
 
-Read the diff first: on a first deploy it is the function, its role, its log group, its URL and the
-two generated secrets, and nothing else. Then read the outputs:
+Every later deploy of the stack takes the same two values; without either, the synth stops and
+names it.
+
+Read the diff first: on a first deploy it is the function, its role, its log group, its URL with
+its two permissions, the SSM parameter `BackendHost`, the two alarms and the two generated
+secrets, and nothing else. Then read the outputs:
 
 ```sh
 AWS_PROFILE=stellar aws cloudformation describe-stacks --region eu-central-1 \
@@ -101,13 +132,15 @@ AWS_PROFILE=stellar aws cloudformation describe-stacks --region eu-central-1 \
   --query 'Stacks[0].Outputs[].[OutputKey,OutputValue]' --output text
 ```
 
-`FunctionUrlHost` is the function URL's host (`<id>.lambda-url.eu-central-1.on.aws`), which the
-explorer's setting takes in step 4. `OriginSecretName` is `sorobanscan-hub/production/origin-secret`.
+`OriginSecretName` is `sorobanscan-hub/production/origin-secret` and `BackendHostParameterName`
+`/sorobanscan-hub/production/backend-host`: the two names the explorer's setting takes in step 4.
 
-Then call the function URL itself, with no header:
+Then call the function URL itself, with no header. The host comes from the parameter and stays in
+the shell (above: never paste it anywhere):
 
 ```sh
-curl -si https://<FunctionUrlHost>/api/hub/me
+curl -si "https://$(AWS_PROFILE=stellar aws ssm get-parameter --region eu-central-1 \
+  --name /sorobanscan-hub/production/backend-host --query Parameter.Value --output text)/api/hub/me"
 ```
 
 Expected: `400` and `{"error":"not_through_the_site"}`. The same call through the explorer's
@@ -121,6 +154,22 @@ look at the function URL directly first. Anything but `400` here:
   `Runtime.ImportModuleError` or an init error, fix it and redeploy.
 - `403`: the function URL's public permission is missing. The stack sets it; look at the function's
   "Function URL" configuration in the console before going on.
+
+Last, see that the alarms reach Slack. Say in `#stellar-x402-bot` that a test of the hub's alarms
+follows, then:
+
+```sh
+AWS_PROFILE=stellar aws cloudwatch set-alarm-state --region eu-central-1 \
+  --alarm-name sorobanscan-hub-production-backend-throttles \
+  --state-value ALARM --state-reason "Delivery test of the hub's alarms"
+```
+
+Expected: the alarm's message in `#stellar-x402-bot` within a minute or two. The alarm goes back
+to `OK` at its next evaluation, a few minutes later, without a message. No message: the alarm's
+history says whether the publish failed
+(`aws cloudwatch describe-alarm-history --region eu-central-1 --alarm-name
+sorobanscan-hub-production-backend-throttles --history-item-type Action`), and Chatbot's own log
+group, `/aws/chatbot/x402-production-alarms` in `us-east-1`, whether Slack refused it.
 
 ### 3. The bundle
 
@@ -154,7 +203,7 @@ In `soroban-block-explorer`, a pull request that adds to `infra/envs/production.
 
 ```json
 "apiHub": {
-  "backendHost": "<FunctionUrlHost>",
+  "backendHostParameter": "/sorobanscan-hub/production/backend-host",
   "originSecretName": "sorobanscan-hub/production/origin-secret",
   "originSecretRevision": "1",
   "pages": false
@@ -168,6 +217,11 @@ as that repo's `docs/deployment.md` ("Releases and the CI deploy path") says: a 
 `production-YYYY.MM.DD-N-Delivery` on `origin/master` (`infra/scripts/deploy-scope.sh` shows what
 a tag will do). `develop` → `master` carries whatever else `develop` holds: read its diff before
 merging it, and agree with the explorer's team when it ships.
+
+The setting names the parameter, never the host. The explorer's stack reads the parameter's
+value each time it deploys (a CloudFormation parameter of SSM type), so the hub's stack must be
+deployed (step 2) before this release: without the parameter, the explorer's deploy stops before
+changing anything.
 
 Only `/api/hub/*` changes: CloudFront sends it to the function, with the header
 `X-Hub-Origin-Secret` and the viewer's address in `X-Hub-Viewer-Ip`. Every page is still the
@@ -234,7 +288,7 @@ curl -si -X POST -H 'Origin: https://sorobanscan.com' https://sorobanscan.com/ap
 curl -si -X POST -H 'Origin: https://sorobanscan.com' https://sorobanscan.com/api/hub/x402/key/revoke     # 401 not_signed_in
 curl -si -X POST -H 'Origin: https://sorobanscan.com' https://sorobanscan.com/api/hub/auth/issue | grep -i -e '^HTTP' -e '^location'  # 303, Location: /api/login
 curl -si https://sorobanscan.com/api/hub/nothing                                                 # 400 {"error":"unknown_route"}
-curl -si https://<FunctionUrlHost>/api/hub/me                                                    # 400 {"error":"not_through_the_site"}
+curl -si "https://$(AWS_PROFILE=stellar aws ssm get-parameter --region eu-central-1 --name /sorobanscan-hub/production/backend-host --query Parameter.Value --output text)/api/hub/me"  # 400 {"error":"not_through_the_site"}
 ```
 
 The limit: 30 a minute to the three that call Discord, 120 a minute to the rest (`GET me` is not
@@ -285,15 +339,7 @@ the distribution does.
 
 ## The logs
 
-The function's log group is the one the stack made:
-
-```sh
-AWS_PROFILE=stellar aws lambda get-function-configuration --region eu-central-1 \
-  --function-name "$(AWS_PROFILE=stellar aws cloudformation describe-stack-resources --region eu-central-1 \
-    --stack-name SorobanscanHub-production-Backend \
-    --query "StackResources[?ResourceType=='AWS::Lambda::Function'].PhysicalResourceId" --output text)" \
-  --query LoggingConfig.LogGroup --output text
-```
+The function's log group is `/aws/lambda/sorobanscan-hub-production-backend`, kept for a month.
 
 Lines to know (a line never holds a token, a secret or a key):
 
@@ -307,6 +353,51 @@ Lines to know (a line never holds a token, a secret or a key):
   request counts as one client against the limit and the first people to arrive spend it for
   everyone. Look at the distribution's `/api/hub/*` behaviour in the explorer's stack. The line is
   logged once per instance.
+
+## The alarms
+
+Two, made by the stack, each to `x402-production-alarms` and so to `#stellar-x402-bot`, with a
+message when it goes to `ALARM` and none when it goes back to `OK`. Both count what happened in 5
+minutes, and a 5 minutes with no data is not a fault.
+
+**`sorobanscan-hub-production-backend-throttles`**: Lambda's `Throttles` for the function, a Sum
+of 1 or more. Lambda refused calls because the function's 20 reserved instances were all busy,
+or because more than 200 requests came in a second (a function URL takes 10 times its reserved
+concurrency a second, [AWS](https://docs.aws.amazon.com/lambda/latest/dg/urls-configuration.html#urls-throttling)).
+The function URL then answers `429` to everybody, the site's own calls included: for that time
+nobody signs in and the dashboards show no data. First checks, in the function's "Monitor" tab
+in the console over the last hour:
+
+- `Duration` near 20 to 29 seconds, with the requests at their usual level: the instances were
+  held by slow calls to Discord or a product. The log group says which (`prices_call_failed`,
+  `x402_call_failed`, `prices_call_retried`, `x402_call_retried`). Not an attack; it ends when
+  the product does.
+- The requests (`UrlRequestCount`) far above their usual level, nearly all `4xx`
+  (`Url4xxCount`): a flood. If the explorer's distribution shows the same jump in its own
+  `Requests` (CloudWatch, `us-east-1`), it came through the site: the limit by address can't stop
+  many addresses and doesn't count `GET me`, and AWS WAF's rate rule on the distribution is the
+  answer (the public launch spec, "The request limit"), a change in the explorer agreed with its
+  team. If the distribution's requests are flat, the calls go to the function URL directly: its
+  host leaked, see "If the function URL's host leaked".
+
+**`sorobanscan-hub-production-backend-url-5xx`**: the function URL's `Url5xxCount`, a Sum of 5 or
+more. Answers with a `5xx`: the function's errors and timeouts, an instance that can't read its
+settings (`503 sign_in_not_configured`), a product that doesn't answer (`502`
+`prices_unavailable` or `x402_unavailable`, `503` `prices_busy` or `x402_busy`) or whose secret
+can't be read (`503 product_not_configured`). First check, the log group's last 15 minutes:
+
+```sh
+AWS_PROFILE=stellar aws logs filter-log-events --region eu-central-1 \
+  --log-group-name /aws/lambda/sorobanscan-hub-production-backend \
+  --start-time $(( ($(date +%s) - 900) * 1000 )) \
+  --filter-pattern '?startup_failed ?product_secret_unavailable ?prices_call_failed ?x402_call_failed ?request_failed ?"Task timed out" ?"Runtime."' \
+  --query 'events[].message' --output text
+```
+
+`startup_failed` and `product_secret_unavailable` are a secret or the role ("The logs", above);
+`*_call_failed` a product's backend, which Cloudflare in front of it may be refusing from AWS's
+addresses (step 5); `Task timed out` or `Runtime.` the function itself, which a redeploy of the
+last good `main` puts back.
 
 ## The way back
 
@@ -329,9 +420,7 @@ secrets again, by changing the function's configuration (Lambda starts new insta
 configuration):
 
 ```sh
-FN=$(AWS_PROFILE=stellar aws cloudformation describe-stack-resources --region eu-central-1 \
-  --stack-name SorobanscanHub-production-Backend \
-  --query "StackResources[?ResourceType=='AWS::Lambda::Function'].PhysicalResourceId" --output text)
+FN=sorobanscan-hub-production-backend
 AWS_PROFILE=stellar aws lambda update-function-configuration --region eu-central-1 \
   --function-name "$FN" --description "restarted $(date -u +%Y-%m-%dT%H:%M:%SZ)"
 AWS_PROFILE=stellar aws lambda wait function-updated --region eu-central-1 --function-name "$FN"
@@ -405,3 +494,79 @@ fails at Discord.
 **The products' token secrets (`prices-token`, `x402-token`).** The four steps in the README's
 "The token to Prices" and "The token to x402". An instance keeps the value for 5 minutes, so the
 steps' waits there already cover it; the function needs no restart.
+
+## If the function URL's host leaked
+
+The host alone opens nothing (each direct call is answered `400`), but every call is billed and
+counted against the 20 instances, so a flood of direct calls throttles the site. Once the host is
+known outside the account, give the function a new one. The new host is never written down: it
+goes from the hub's stack to the explorer's through the parameter.
+
+Why it takes two deploys. Lambda gives a function one URL per qualifier (here `$LATEST`), whose
+address never changes, and creating a second one fails with `ResourceConflictException`; a URL
+that is deleted can't be recovered, and the next one gets a different address
+([AWS](https://docs.aws.amazon.com/lambda/latest/dg/urls-configuration.html),
+[CreateFunctionUrlConfig](https://docs.aws.amazon.com/lambda/latest/api/API_CreateFunctionUrlConfig.html)).
+Renaming the URL's construct in the stack would not do it: CloudFormation creates the new resource
+before it deletes the old one
+([update behaviors](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/using-cfn-updating-stacks-update-behaviors.html)),
+so Lambda would refuse the new URL and the deploy would roll back. So the first deploy removes
+the URL, with `-c functionUrl=off`, and the second, without it, makes a new one.
+
+**The outage.** From the end of the first deploy until CloudFront has deployed the explorer's
+release, every call to `/api/hub/*` fails: nobody signs in and the dashboards show no data.
+Pages are served, and sessions stay good, since their secret doesn't change. It lasts the two
+deploys of the hub's stack, a few minutes each, plus the explorer's release, its workflow and
+CloudFront's deployment. Prepare that release before starting: a tag on `origin/master` deploys
+what `master` holds for `-Delivery`, so look at it with `infra/scripts/deploy-scope.sh` and agree
+with the explorer's team, as in step 4, and have someone at hand who can approve the explorer's
+production deploy.
+
+1. Keep the old host in the shell, for the check in step 3, and remove the URL (`$TOPIC` as in
+   "Before the first deploy"):
+
+   ```sh
+   OLD=$(AWS_PROFILE=stellar aws ssm get-parameter --region eu-central-1 \
+     --name /sorobanscan-hub/production/backend-host --query Parameter.Value --output text)
+   AWS_PROFILE=stellar corepack pnpm infra:diff -c discordClientId=<client id> -c alarmTopicArn="$TOPIC" -c functionUrl=off
+   AWS_PROFILE=stellar corepack pnpm infra:deploy -c discordClientId=<client id> -c alarmTopicArn="$TOPIC" -c functionUrl=off
+   ```
+
+   The diff removes the URL, its two permissions and the parameter `BackendHost`, and nothing
+   else. From here the old host is gone, and the outage has begun. Release nothing of the
+   explorer's now: with no parameter its deploy stops before changing anything.
+
+2. At once, the same deploy without `-c functionUrl=off`:
+
+   ```sh
+   AWS_PROFILE=stellar corepack pnpm infra:deploy -c discordClientId=<client id> -c alarmTopicArn="$TOPIC"
+   ```
+
+   It adds the three back: a URL with a new host, and the parameter holding it. Should it fail
+   with `ResourceConflictException` (Lambda still deleting the old URL), run it again.
+
+3. Check both hosts from the shell, without printing either:
+
+   ```sh
+   NEW=$(AWS_PROFILE=stellar aws ssm get-parameter --region eu-central-1 \
+     --name /sorobanscan-hub/production/backend-host --query Parameter.Value --output text)
+   [ "$NEW" != "$OLD" ] && echo "new host"
+   curl -s "https://$NEW/api/hub/me"; echo   # {"error":"not_through_the_site"}
+   curl -s "https://$OLD/api/hub/me"; echo   # anything but that line: Lambda's own refusal
+   unset OLD NEW
+   ```
+
+4. Release the explorer's `-Delivery`: a tag `production-YYYY.MM.DD-N-Delivery` on
+   `origin/master`, as in step 4, with no pull request, since its setting names the parameter and
+   not the host. The deploy reads the parameter's new value: CloudFormation reads an SSM-typed
+   parameter on every create and update of a stack
+   ([AWS](https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/cloudformation-supplied-parameter-types.html)),
+   and the CDK CLI never skips the deploy of a stack that has one. Wait for the distribution to
+   say `Deployed`.
+
+5. `curl -s https://sorobanscan.com/api/hub/me` answers `200`; then a sign-in in a browser. The
+   outage is over.
+
+Not chosen: a URL on an alias would let the new host exist before the old one goes, with no
+outage, at the cost of a published version and an alias in the stack, for an event that should
+not happen.

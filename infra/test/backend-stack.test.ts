@@ -3,8 +3,11 @@ import { Match, Template } from "aws-cdk-lib/assertions";
 import { describe, expect, it } from "vitest";
 import { BackendStack } from "../lib/backend-stack.ts";
 
+const TOPIC = "arn:aws:sns:eu-central-1:111111111111:x402-production-alarms";
+const CONTEXT = { discordClientId: "1", alarmTopicArn: TOPIC };
+
 /** `aws:cdk:bundling-stacks: []` keeps esbuild from bundling the function in a unit test. */
-function synth(context: Record<string, unknown> = { discordClientId: "1" }): Template {
+function synth(context: Record<string, unknown> = CONTEXT): Template {
   const app = new App({ context: { "aws:cdk:bundling-stacks": [], ...context } });
   const stack = new BackendStack(app, "SorobanscanHub-production-Backend", {
     env: { account: "111111111111", region: "eu-central-1" },
@@ -13,6 +16,8 @@ function synth(context: Record<string, unknown> = { discordClientId: "1" }): Tem
 }
 
 const SECRET_PREFIX = "sorobanscan-hub/production";
+const FUNCTION_NAME = "sorobanscan-hub-production-backend";
+const HOST_PARAMETER = "/sorobanscan-hub/production/backend-host";
 
 /** Every `secretsmanager:GetSecretValue` statement's resources, flattened to one string each. */
 function readableSecrets(template: Template): string[] {
@@ -34,9 +39,10 @@ function readableSecrets(template: Template): string[] {
 describe("BackendStack", () => {
   const template = synth();
 
-  it("has one function: Node 22, arm64, 29 s, 512 MB, 20 reserved", () => {
+  it("has one function, by its fixed name: Node 22, arm64, 29 s, 512 MB, 20 reserved", () => {
     template.resourceCountIs("AWS::Lambda::Function", 1);
     template.hasResourceProperties("AWS::Lambda::Function", {
+      FunctionName: FUNCTION_NAME,
       Runtime: "nodejs22.x",
       Architectures: ["arm64"],
       Timeout: 29,
@@ -136,16 +142,106 @@ describe("BackendStack", () => {
     }
   });
 
-  it("keeps the log group for one month", () => {
-    template.hasResourceProperties("AWS::Logs::LogGroup", { RetentionInDays: 30 });
+  it("keeps the log group, by its fixed name, for one month", () => {
+    template.resourceCountIs("AWS::Logs::LogGroup", 1);
+    template.hasResourceProperties("AWS::Logs::LogGroup", {
+      LogGroupName: `/aws/lambda/${FUNCTION_NAME}`,
+      RetentionInDays: 30,
+    });
   });
 
-  it("outputs the function URL's host and the origin secret's name", () => {
-    template.hasOutput("FunctionUrlHost", Match.anyValue());
+  it("writes the function URL's host into the SSM parameter the explorer reads", () => {
+    template.resourceCountIs("AWS::SSM::Parameter", 1);
+    template.hasResourceProperties("AWS::SSM::Parameter", {
+      Name: HOST_PARAMETER,
+      Type: "String",
+      // `https://<id>.lambda-url.eu-central-1.on.aws/` split on `/`: the third piece is the host.
+      Value: {
+        "Fn::Select": [
+          2,
+          {
+            "Fn::Split": [
+              "/",
+              { "Fn::GetAtt": [Match.stringLikeRegexp("FunctionUrl"), "FunctionUrl"] },
+            ],
+          },
+        ],
+      },
+    });
+  });
+
+  it("outputs the names the explorer takes, and never the host", () => {
     template.hasOutput("OriginSecretName", { Value: `${SECRET_PREFIX}/origin-secret` });
+    template.hasOutput("BackendHostParameterName", { Value: HOST_PARAMETER });
+    const outputs = template.toJSON().Outputs as Record<string, unknown>;
+    expect(Object.keys(outputs).sort()).toEqual(["BackendHostParameterName", "OriginSecretName"]);
+    expect(JSON.stringify(outputs)).not.toContain("FunctionUrl");
+  });
+
+  describe("alarms, to the topic named by alarmTopicArn", () => {
+    function alarm(name: string): Record<string, unknown> {
+      const found = Object.values(template.findResources("AWS::CloudWatch::Alarm")).filter(
+        (a) => a.Properties.AlarmName === name,
+      );
+      expect(found).toHaveLength(1);
+      return found[0]?.Properties as Record<string, unknown>;
+    }
+    const [functionId] = Object.keys(template.findResources("AWS::Lambda::Function"));
+
+    it("has exactly two", () => {
+      template.resourceCountIs("AWS::CloudWatch::Alarm", 2);
+    });
+
+    it.each([
+      ["sorobanscan-hub-production-backend-throttles", "Throttles", 1],
+      ["sorobanscan-hub-production-backend-url-5xx", "Url5xxCount", 5],
+    ])("%s: the Sum of %s over 5 minutes at %d or more", (name, metric, threshold) => {
+      expect(alarm(name)).toMatchObject({
+        Namespace: "AWS/Lambda",
+        MetricName: metric,
+        Dimensions: [{ Name: "FunctionName", Value: { Ref: functionId } }],
+        Statistic: "Sum",
+        Period: 300,
+        EvaluationPeriods: 1,
+        Threshold: threshold,
+        ComparisonOperator: "GreaterThanOrEqualToThreshold",
+        TreatMissingData: "notBreaching",
+        AlarmActions: [TOPIC],
+      });
+      expect(alarm(name)).not.toHaveProperty("OKActions");
+    });
   });
 
   it("stops without discordClientId, naming it", () => {
     expect(() => synth({})).toThrow(/discordClientId/);
+  });
+
+  it("stops without alarmTopicArn, or with one that is not an SNS topic's ARN, naming it", () => {
+    expect(() => synth({ discordClientId: "1" })).toThrow(/alarmTopicArn/);
+    expect(() => synth({ ...CONTEXT, alarmTopicArn: "x402-production-alarms" })).toThrow(
+      /alarmTopicArn/,
+    );
+  });
+
+  describe("functionUrl=off, the first half of a new host", () => {
+    const off = synth({ ...CONTEXT, functionUrl: "off" });
+
+    it("has no function URL, no public permission and no host parameter", () => {
+      off.resourceCountIs("AWS::Lambda::Url", 0);
+      off.resourceCountIs("AWS::Lambda::Permission", 0);
+      off.resourceCountIs("AWS::SSM::Parameter", 0);
+    });
+
+    it("keeps the function, its log group, its secrets and both alarms", () => {
+      off.resourceCountIs("AWS::Lambda::Function", 1);
+      off.hasResourceProperties("AWS::Lambda::Function", { FunctionName: FUNCTION_NAME });
+      off.resourceCountIs("AWS::Logs::LogGroup", 1);
+      off.resourceCountIs("AWS::SecretsManager::Secret", 2);
+      off.resourceCountIs("AWS::CloudWatch::Alarm", 2);
+    });
+
+    it("refuses any other value, naming it", () => {
+      expect(() => synth({ ...CONTEXT, functionUrl: "false" })).toThrow(/functionUrl/);
+    });
   });
 });
