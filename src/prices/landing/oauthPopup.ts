@@ -32,8 +32,11 @@
  * after the trip through discord.com and back — which is exactly the property
  * needed, and the reason this is not a query parameter the backend would have
  * to carry.
+ *
+ * Exported for the hub's "Get API Key" (`src/account/useIssueWindow.ts`), whose
+ * form names the window as its `target`.
  */
-const POPUP_NAME = 'stellar-portal-oauth';
+export const POPUP_NAME = 'stellar-portal-oauth';
 
 /** Marks a message as ours. `postMessage` is a public channel. */
 const MESSAGE_SOURCE = 'stellar-portal-oauth';

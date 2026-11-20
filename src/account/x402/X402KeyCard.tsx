@@ -1,8 +1,6 @@
-import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import AutorenewRoundedIcon from "@mui/icons-material/AutorenewRounded";
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
 import { useState } from "react";
 import { Link } from "react-router";
@@ -18,8 +16,9 @@ import {
   type Pill,
 } from "../../prices/landing/DashboardPanel";
 import { DiscordIcon } from "../../prices/landing/DiscordIcon";
-import { theme } from "../../prices/theme/theme";
-import { color, radius } from "../../prices/theme/tokens";
+import { color } from "../../prices/theme/tokens";
+import { GetKeyForm } from "../GetKeyForm";
+import type { GetKeyControl } from "../useIssueWindow";
 import { useRevealedKey } from "../useRevealedKey";
 import { IssueBanner, type IssueOutcome } from "../prices/IssueOutcome";
 import type { Account } from "../prices/KeyCard";
@@ -28,7 +27,6 @@ import {
   HubError,
   isSignedOut,
   isUnavailable,
-  ISSUE_URL,
   keyIsGone,
   revealKey,
   revokeKey,
@@ -60,16 +58,18 @@ const dayOr = (value: string | null | undefined) =>
  * without its usage, plan and rate limit, which x402 has none of; its rule is the calendar month
  * (UTC). Copied rather than shared, since the parts that differ run through the whole of it.
  *
- * - **No key**: "Get API Key", a form `POST` to the hub with `product=x402`.
+ * - **No key**: "Get API Key", a form `POST` to the hub with `product=x402`, its round trip in a
+ *   second window (`../GetKeyForm.tsx`).
  * - **Active**: the key masked, shown and copied through `key/reveal` on a press; "Regenerate"
  *   revokes through `key/revoke`, behind a typed phrase, and issues nothing.
  * - **Revoked**: when, and when a new key can be had; "Get API Key" once it can.
- * - The `?issue=` outcome the visitor came back with, above all of it.
+ * - The outcome of "Get API Key", from its window or from `?issue=`, above all of it.
  */
 export function X402KeyCard({
   view,
   outcome,
   account,
+  getKey,
   showable,
   onReload,
   onRevoked,
@@ -77,6 +77,8 @@ export function X402KeyCard({
   view: AccountView;
   outcome: IssueOutcome | null;
   account: Account;
+  /** "Get API Key"'s second window (`useIssueWindow`). */
+  getKey: GetKeyControl;
   /** Whether the account says the key can be shown. */
   showable: boolean;
   /** Reads the account again. */
@@ -131,7 +133,9 @@ export function X402KeyCard({
         </p>
       )}
 
-      {key?.state === "none" && !settling && <NoKey keyState={key} account={account} />}
+      {key?.state === "none" && !settling && (
+        <NoKey keyState={key} account={account} getKey={getKey} />
+      )}
       {key?.state === "active" && (
         <ActiveKey
           // A new key is a new card: nothing shown or copied of the old one carries over.
@@ -141,7 +145,7 @@ export function X402KeyCard({
           onRevoked={onRevoked}
         />
       )}
-      {key?.state === "revoked" && <RevokedKey keyState={key} />}
+      {key?.state === "revoked" && <RevokedKey keyState={key} getKey={getKey} />}
 
       {key !== null && key.state !== "none" && (
         <MetaRow>
@@ -191,51 +195,15 @@ export function X402KeyCard({
   );
 }
 
-/**
- * "Get API Key": a real form, not a `fetch`. The issue is a round trip through Discord, a
- * top-level navigation; the hub reads the product from an urlencoded body only, and refuses a
- * `POST` that doesn't name this page as its origin, which the browser does for a form.
- */
-function GetKeyForm() {
-  return (
-    <Box
-      component="form"
-      method="post"
-      action={ISSUE_URL}
-      data-testid="get-api-key"
-      sx={{ display: "flex", justifyContent: "center" }}
-    >
-      <input type="hidden" name="product" value="x402" />
-      <Button
-        type="submit"
-        variant="contained"
-        sx={{
-          minHeight: 56,
-          gap: 1.5,
-          borderRadius: `${radius.pill}px`,
-          ...theme.typography.body2,
-          fontWeight: 700,
-          textTransform: "none",
-          backgroundColor: color.surface.primary,
-          color: color.black,
-          boxShadow: "none",
-          "&:hover": { backgroundColor: color.primary[300], boxShadow: "none" },
-        }}
-      >
-        <GlyphBadge icon={AddRoundedIcon} tone="onPrimary" />
-        Get API Key
-      </Button>
-    </Box>
-  );
-}
-
 /** The `Dashboard - no key` frame: the red strip, then the one action. */
 function NoKey({
   keyState,
   account,
+  getKey,
 }: {
   keyState: Extract<X402Key, { state: "none" }>;
   account: Account;
+  getKey: GetKeyControl;
 }) {
   return (
     <>
@@ -245,13 +213,19 @@ function NoKey({
           <code data-testid="no-key-discord-id">{account.id}</code>.
         </p>
       </NoticeStrip>
-      {keyState.can_issue && <GetKeyForm />}
+      {keyState.can_issue && <GetKeyForm product="x402" getKey={getKey} />}
     </>
   );
 }
 
 /** A revoked key: when it stopped working, and when a new one can be had. */
-function RevokedKey({ keyState }: { keyState: Extract<X402Key, { state: "revoked" }> }) {
+function RevokedKey({
+  keyState,
+  getKey,
+}: {
+  keyState: Extract<X402Key, { state: "revoked" }>;
+  getKey: GetKeyControl;
+}) {
   const on = describeUtcDay(keyState.revoked_at);
   return (
     <Stack spacing={2} data-testid="key-revoked">
@@ -261,7 +235,7 @@ function RevokedKey({ keyState }: { keyState: Extract<X402Key, { state: "revoked
           ? "A new key can be issued now."
           : `A new key can be issued from ${dayOr(keyState.next_eligible_at)}.`}
       </p>
-      {keyState.can_issue && <GetKeyForm />}
+      {keyState.can_issue && <GetKeyForm product="x402" getKey={getKey} />}
     </Stack>
   );
 }

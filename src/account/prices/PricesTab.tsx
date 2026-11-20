@@ -11,6 +11,7 @@ import { DashboardCard } from "../../prices/landing/DashboardPanel";
 import { fetchAccount, type PricesAccount } from "./api";
 import { useIssueOutcome } from "./IssueOutcome";
 import { KeyCard, type Account, type AccountView } from "./KeyCard";
+import { useIssueWindow } from "../useIssueWindow";
 
 /**
  * The dashboard's Prices tab: the Prices portal's dashboard as it is today (akot, 2026-11-18, from
@@ -20,7 +21,7 @@ import { KeyCard, type Account, type AccountView } from "./KeyCard";
  * key and its use, where the portal made three, and `key/reveal` and `key/revoke` on a press.
  */
 export function PricesTab({ account }: { account: Account }) {
-  const outcome = useIssueOutcome();
+  const fromAddress = useIssueOutcome();
   const [view, setView] = useState<AccountView>({ state: "loading" });
   /** The revoke on this page left a duplicate key working (Prices' partial revocation). */
   const [partial, setPartial] = useState(false);
@@ -53,6 +54,11 @@ export function PricesTab({ account }: { account: Account }) {
     setPartial(false);
     load();
   }, [load]);
+
+  // "Get API Key" in a second window: when it is done the account is read again, and its outcome
+  // has the last word over the one an earlier round trip left in the address.
+  const getKey = useIssueWindow(reload);
+  const outcome = getKey.attempted ? getKey.outcome : fromAddress;
 
   // The revoke's own answer is the account's key from now: the account read straight after it
   // could still list the key Prices has just switched off. The usage stays the account's.
@@ -92,6 +98,7 @@ export function PricesTab({ account }: { account: Account }) {
         view={view}
         outcome={outcome}
         account={account}
+        getKey={getKey}
         partial={partial}
         onReload={reload}
         onRevoked={onRevoked}

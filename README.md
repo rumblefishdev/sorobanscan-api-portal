@@ -321,7 +321,7 @@ does (akot, 2026-11-19): the page says it is waiting, the window comes back to `
 `/login?signin=<reason>`, hands that outcome to the page and shuts (`bridgeOAuthPopup` in
 `src/boot.js`), and the page asks `/me` again before it goes to the dashboard, or shows the refusal
 in Prices' words. Where the browser opens no second window the button is a plain link and the same
-round trip runs in the tab. "Get API Key" stays in the tab: its round trip shows no consent screen. Without the backend's settings
+round trip runs in the tab. "Get API Key" on a dashboard tab runs in a second window too (akot, 2026-11-20; `src/account/useIssueWindow.ts`): the form's `POST` to `auth/issue` is sent to an empty window the page opens, the tab says it is waiting, and when the window lands on `/dashboard/<api>?issue=<outcome>` it hands that outcome to the tab and shuts, and the tab reads the account again. Where the browser opens no second window the form posts in the tab, which comes back with the outcome in its address. Without the backend's settings
 `/login` says sign-in is not configured. When `/me` fails or doesn't answer in 10 seconds, both
 pages say they could not check the sign-in, with "Try again", rather than treat the visitor as
 signed out. The dashboard has a tab per API, `/api/dashboard/<api>`; an address naming a tab that
@@ -332,8 +332,8 @@ The Prices tab (`src/account/prices/`) is the Prices portal's dashboard, drawn f
 `/api/hub/prices/*`: the key card (masked; Show key and Copy key ask `key/reveal`; Regenerate is
 Prices' typed-phrase dialog over `key/revoke`), Monthly Usage and Rate Limit from `account`. With
 no key, or a revoked one once its cap has passed, the card's "Get API Key" is a form `POST` to
-`auth/issue`; the outcome it comes back with, `?issue=`, is said once in Prices' words and taken
-off the address. The backend's errors are said in words, with their code.
+`auth/issue`, sent to a second window (above); its outcome, the window's or the `?issue=` the tab
+came back with, is said once in Prices' words, and `?issue=` is taken off the address. The backend's errors are said in words, with their code.
 
 `VITE_PRODUCTS`, a build setting, is the comma list of APIs whose tab is open (`prices` unless it
 names others, `prices,x402` once x402 opens); the other tabs show "Coming soon" and don't open.

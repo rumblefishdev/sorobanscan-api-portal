@@ -4,7 +4,6 @@ import {
   HubError,
   isInstant,
   isObject,
-  ISSUE_URL as PRICES_ISSUE_URL,
   keyIsGone,
 } from "../prices/api";
 
@@ -19,9 +18,6 @@ const X402 = `${HUB}x402/`;
 const ACCOUNT_URL = `${X402}account`;
 const REVEAL_URL = `${X402}key/reveal`;
 const REVOKE_URL = `${X402}key/revoke`;
-
-/** "Get API Key": the hub's one issue route, a form `POST` with `product=x402`. */
-export const ISSUE_URL = PRICES_ISSUE_URL;
 
 export { HubError, keyIsGone };
 

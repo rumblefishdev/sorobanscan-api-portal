@@ -6,6 +6,7 @@ import { PortalStatusChrome } from "../../prices/dashboard/parts";
 import { DashboardCard } from "../../prices/landing/DashboardPanel";
 import { useIssueOutcome } from "../prices/IssueOutcome";
 import type { Account } from "../prices/KeyCard";
+import { useIssueWindow } from "../useIssueWindow";
 import { fetchAccount } from "./api";
 import { X402KeyCard, type AccountView } from "./X402KeyCard";
 
@@ -15,7 +16,7 @@ import { X402KeyCard, type AccountView } from "./X402KeyCard";
  * backend: one `account` call for the key, and `key/reveal` and `key/revoke` on a press.
  */
 export function X402Tab({ account }: { account: Account }) {
-  const outcome = useIssueOutcome();
+  const fromAddress = useIssueOutcome();
   const [view, setView] = useState<AccountView>({ state: "loading" });
 
   // One read at a time: a newer one supersedes an older answer, and leaving the tab drops it.
@@ -43,6 +44,11 @@ export function X402Tab({ account }: { account: Account }) {
     setView({ state: "loading" });
     load();
   }, [load]);
+
+  // "Get API Key" in a second window: when it is done the account is read again, and its outcome
+  // has the last word over the one an earlier round trip left in the address.
+  const getKey = useIssueWindow(reload);
+  const outcome = getKey.attempted ? getKey.outcome : fromAddress;
 
   // The revoke's own answer is the account's key from now: the account read straight after it
   // could still list the key that was just revoked.
@@ -73,6 +79,7 @@ export function X402Tab({ account }: { account: Account }) {
         view={view}
         outcome={outcome}
         account={account}
+        getKey={getKey}
         showable={view.state === "ok" && view.account.showable}
         onReload={reload}
         onRevoked={onRevoked}

@@ -1,8 +1,6 @@
-import AddRoundedIcon from "@mui/icons-material/AddRounded";
 import AutorenewRoundedIcon from "@mui/icons-material/AutorenewRounded";
 import ContentCopyRoundedIcon from "@mui/icons-material/ContentCopyRounded";
 import Box from "@mui/material/Box";
-import Button from "@mui/material/Button";
 import Stack from "@mui/material/Stack";
 import { useState } from "react";
 
@@ -26,13 +24,13 @@ import {
 import { DiscordIcon } from "../../prices/landing/DiscordIcon";
 import { QUICKSTART } from "../../prices/landing/links";
 import { ArrowBadge } from "../../prices/landing/primitives";
-import { theme } from "../../prices/theme/theme";
-import { color, radius } from "../../prices/theme/tokens";
+import { color } from "../../prices/theme/tokens";
+import { GetKeyForm } from "../GetKeyForm";
 import { SIGN_IN_URL } from "../session";
+import type { GetKeyControl } from "../useIssueWindow";
 import { useRevealedKey } from "../useRevealedKey";
 import {
   HubError,
-  ISSUE_URL,
   describeFailure,
   keyIsGone,
   revealKey,
@@ -62,17 +60,18 @@ const MASK = "••••••••••••••••••••••
  * drawn from the same parts, its states fed by the hub's `account` instead of `/api/key`.
  *
  * - **No key**: "Get API Key", a form `POST` to the hub (akot, 2026-11-18: in the tab, where
- *   Prices issued at sign-in).
+ *   Prices issued at sign-in), its round trip in a second window (`../GetKeyForm.tsx`).
  * - **Active**: the key masked, shown and copied through the hub's `key/reveal`, asked for only
  *   on Show key or Copy key; "Regenerate" opens Prices' dialog, which revokes through the hub's
  *   `key/revoke`.
  * - **Revoked**: when it was, and when a new key can be had; "Get API Key" once it can.
- * - The `?issue=` outcome the visitor came back with, above all of it.
+ * - The outcome of "Get API Key", from its window or from `?issue=`, above all of it.
  */
 export function KeyCard({
   view,
   outcome,
   account,
+  getKey,
   partial,
   onReload,
   onRevoked,
@@ -80,6 +79,8 @@ export function KeyCard({
   view: AccountView;
   outcome: IssueOutcome | null;
   account: Account;
+  /** "Get API Key"'s second window (`useIssueWindow`). */
+  getKey: GetKeyControl;
   /** The revoke on this page disabled some of the account's keys but not every one. */
   partial: boolean;
   /** Reads the account again. */
@@ -138,7 +139,9 @@ export function KeyCard({
         </p>
       )}
 
-      {key?.state === "none" && !settling && <NoKey keyState={key} account={account} />}
+      {key?.state === "none" && !settling && (
+        <NoKey keyState={key} account={account} getKey={getKey} />
+      )}
       {key?.state === "active" && (
         <ActiveKey
           // A new key is a new card: nothing shown or copied of the old one carries over.
@@ -150,7 +153,9 @@ export function KeyCard({
           onRevoked={onRevoked}
         />
       )}
-      {key?.state === "revoked" && <RevokedKey keyState={key} partial={partial} />}
+      {key?.state === "revoked" && (
+        <RevokedKey keyState={key} partial={partial} getKey={getKey} />
+      )}
 
       {key !== null && key.state !== "none" && !justIssued && (
         <MetaRow>
@@ -209,54 +214,15 @@ export function KeyCard({
   );
 }
 
-/**
- * "Get API Key": a real form, not a `fetch`. The issue is a round trip through Discord, a
- * top-level navigation; the hub reads the product from an urlencoded body only, and refuses a
- * `POST` that doesn't name this page as its origin, which the browser does for a form.
- */
-function GetKeyForm() {
-  return (
-    <Box
-      component="form"
-      method="post"
-      action={ISSUE_URL}
-      data-testid="get-api-key"
-      sx={{ display: "flex", justifyContent: "center" }}
-    >
-      <input type="hidden" name="product" value="prices" />
-      {/* Prices' brand button for the card's one action (`data-variant="cta"` there), at its own
-          width and centred, as the Prices pages' other primary buttons, not the card's full width
-          (akot, 2026-11-18). */}
-      <Button
-        type="submit"
-        variant="contained"
-        sx={{
-          minHeight: 56,
-          gap: 1.5,
-          borderRadius: `${radius.pill}px`,
-          ...theme.typography.body2,
-          fontWeight: 700,
-          textTransform: "none",
-          backgroundColor: color.surface.primary,
-          color: color.black,
-          boxShadow: "none",
-          "&:hover": { backgroundColor: color.primary[300], boxShadow: "none" },
-        }}
-      >
-        <GlyphBadge icon={AddRoundedIcon} tone="onPrimary" />
-        Get API Key
-      </Button>
-    </Box>
-  );
-}
-
 /** The `Dashboard - no key` frame: the red strip, then the one action. */
 function NoKey({
   keyState,
   account,
+  getKey,
 }: {
   keyState: Extract<PricesKey, { state: "none" }>;
   account: Account;
+  getKey: GetKeyControl;
 }) {
   return (
     <>
@@ -268,7 +234,11 @@ function NoKey({
           <code data-testid="no-key-discord-id">{account.id}</code>.
         </p>
       </NoticeStrip>
-      {keyState.can_issue ? <GetKeyForm /> : <CapNotice nextEligibleAt={keyState.next_eligible_at} />}
+      {keyState.can_issue ? (
+        <GetKeyForm product="prices" getKey={getKey} />
+      ) : (
+        <CapNotice nextEligibleAt={keyState.next_eligible_at} />
+      )}
     </>
   );
 }
@@ -289,9 +259,11 @@ function CapNotice({ nextEligibleAt }: { nextEligibleAt: string | null | undefin
 function RevokedKey({
   keyState,
   partial,
+  getKey,
 }: {
   keyState: Extract<PricesKey, { state: "revoked" }>;
   partial: boolean;
+  getKey: GetKeyControl;
 }) {
   return (
     <Stack spacing={2} data-testid="key-revoked">
@@ -315,7 +287,7 @@ function RevokedKey({
       {partial ? null : keyState.can_issue ? (
         <>
           <p data-testid="key-can-issue">A new key can be issued now.</p>
-          <GetKeyForm />
+          <GetKeyForm product="prices" getKey={getKey} />
         </>
       ) : (
         <CapNotice nextEligibleAt={keyState.next_eligible_at} />
