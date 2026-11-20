@@ -865,11 +865,14 @@ describe("an address under an API's page", () => {
     expect(where).toBe("/docs/prices/");
   });
 
-  it("leaves the account pages for the landing page at an address it doesn't know", async () => {
+  it.each(["/login/extra", "/dashboard/prices/extra"])(
+    "leaves the account pages for the landing page at %s",
+    async (from) => {
     const replace = vi.fn();
     vi.stubGlobal("location", { replace });
-    renderAt("/api/login/extra");
+    renderAt(`/api${from}`);
     await vi.waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
     expect(replace).toHaveBeenCalledWith("/api/");
-  });
+    },
+  );
 });

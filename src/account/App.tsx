@@ -7,13 +7,6 @@ import { LoginPage } from "./LoginPage";
 import { useSessionControl } from "./session";
 
 /**
- * The account pages: `/login` and `/dashboard` (with `/dashboard/<product>` for a tab), one sign-in
- * and one dashboard for every API, and the two pages open to everybody, `/quick-start/<product>`
- * and `/docs/<product>` (`docs/DocsPage.tsx`). The session is asked for once, here, so the sign-in
- * page's forward to the dashboard doesn't ask again; the sign-in page asks again only after a
- * sign-in in a second window.
- */
-/**
  * An address past an API's page (`/docs/prices/anything`) is that page's own: it goes there, the
  * address's `#part` kept for the documentation's anchors. An API the page doesn't know is then
  * put on the first tab by the page itself, as it is without the extra part.
@@ -36,6 +29,13 @@ function ToLanding() {
   return null;
 }
 
+/**
+ * The account pages: `/login` and `/dashboard` (with `/dashboard/<product>` for a tab), one sign-in
+ * and one dashboard for every API, and the two pages open to everybody, `/quick-start/<product>`
+ * and `/docs/<product>` (`docs/DocsPage.tsx`). The session is asked for once, here, so the sign-in
+ * page's forward to the dashboard doesn't ask again; the sign-in page asks again only after a
+ * sign-in in a second window.
+ */
 export function App() {
   const { session, checkSignedIn } = useSessionControl();
   return (
