@@ -165,9 +165,14 @@ on x402's routes (below). Without it the three routes with a session (`account`,
 `key/revoke`) answer 400 `unknown_product`, without a session they answer 401 `not_signed_in`, and
 any other path under `/api/hub/x402/` 400 `unknown_route`.
 
-On production it is a Lambda (`bff/src/lambda.ts`, Node 22) behind a function URL, made by the CDK
-app in `infra/` (`pnpm infra:synth`, `infra:diff`, `infra:deploy`, each with
-`-c discordClientId=<id>`). Its plain settings are the function's environment: `HUB_PUBLIC_ORIGIN`
+On production it is the Lambda `sorobanscan-hub-production-backend` (`bff/src/lambda.ts`, Node 22)
+behind a function URL, made by the CDK app in `infra/` (`pnpm infra:synth`, `infra:diff`,
+`infra:deploy`, each with `-c discordClientId=<id> -c alarmTopicArn=<arn>`). The URL's host is in
+neither this repo nor the explorer's: the stack writes it into the SSM parameter
+`/sorobanscan-hub/production/backend-host`, which the explorer's stack reads when it deploys. Two
+alarms, on Lambda's `Throttles` and the URL's `Url5xxCount`, post to the SNS topic
+`alarmTopicArn` names, stellar-x402's `x402-production-alarms` (the runbook's "The alarms").
+Its plain settings are the function's environment: `HUB_PUBLIC_ORIGIN`
 (`https://sorobanscan.com`), `HUB_PRODUCTS` (`prices,x402`) and `DISCORD_CLIENT_ID`. Three more
 name secrets in Secrets Manager, which an instance reads when it starts and never from the
 environment: `HUB_DISCORD_SECRET_NAME` (Discord's client secret), `HUB_SESSION_SECRET_NAME` (the
