@@ -115,13 +115,15 @@ describe("BackendStack", () => {
     const joined = resources.join("\n");
     // The two the stack makes are referenced by logical id, the three it doesn't by name.
     for (const name of ["discord-client-secret", "prices-token", "x402-token"]) {
-      expect(joined).toContain(`${SECRET_PREFIX}/${name}`);
+      // A by-name ARN has no suffix of its own: IAM needs the wildcard for the six characters.
+      expect(joined).toContain(`${SECRET_PREFIX}/${name}-??????`);
     }
     expect(resources.filter((r) => /"Ref":"(Session|Origin)Secret/.test(r))).toHaveLength(2);
     expect(resources).not.toContain('"*"');
   });
 
   it("has no statement on Resource * except the log group's own", () => {
+    expect(Object.keys(template.findResources("AWS::IAM::Policy")).length).toBeGreaterThan(0);
     for (const policy of Object.values(template.findResources("AWS::IAM::Policy"))) {
       for (const s of policy.Properties.PolicyDocument.Statement as Array<{
         Action: string | string[];
