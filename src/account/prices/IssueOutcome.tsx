@@ -7,7 +7,8 @@ import { describeNextEligible } from "../../prices/dashboard/dates";
 /**
  * How a "Get API Key" round trip ended, as the hub's backend lands it on the tab in `?issue=`:
  * Prices' own outcome (`issued`, `has_key`, `capped`, `too_young`, `failed`) or why Prices wasn't
- * asked (the plan's Global Constraints list them).
+ * asked (the plan's Global Constraints list them). `busy` is the backend's limit on its sign-in
+ * routes, which lands on the sign-in page instead (`useIssueWindow`).
  */
 const OUTCOMES = [
   "issued",
@@ -20,6 +21,7 @@ const OUTCOMES = [
   "failed",
   "account_mismatch",
   "cancelled",
+  "busy",
 ] as const;
 export type IssueOutcome = (typeof OUTCOMES)[number];
 
@@ -167,6 +169,14 @@ export function IssueBanner({
           Discord answered for another account than <strong>{username}</strong>, the one signed in
           here, so no key was issued. Switch back to {username} on Discord and try again, or sign
           out and sign in with the other account.
+        </p>
+      );
+    // The backend refused the round trip before Discord, over its limit on the sign-in routes from
+    // one address: the sign-in page's line for it (`TooManyAttempts` in `LoginPage.tsx`).
+    case "busy":
+      return (
+        <p data-testid="issue-busy" role="alert">
+          Too many sign-in attempts from your network. Try again in a minute.
         </p>
       );
     default:

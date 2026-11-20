@@ -12,6 +12,7 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { Hono, type Context, type MiddlewareHandler } from "hono";
 import { routePath } from "hono/route";
+import { clientKey } from "./client-address.ts";
 import {
   PENDING_COOKIE,
   SESSION_COOKIE,
@@ -40,8 +41,30 @@ import {
   type ProductClient,
   type ProductClientOptions,
 } from "./products/client.ts";
+import { rateLimiter } from "./rate-limit.ts";
 import type { HubSettings } from "./settings.ts";
 import { tokens, type Tokens } from "./tokens.ts";
+
+/**
+ * The header CloudFront adds to every request it sends the backend, holding the secret's value
+ * (`HubSettings.originSecret`).
+ */
+export const ORIGIN_SECRET_HEADER = "x-hub-origin-secret";
+/** Where CloudFront's function writes the viewer's address (`client-address.ts`). */
+const VIEWER_IP_HEADER = "x-hub-viewer-ip";
+/**
+ * Requests a minute from one client to the three routes that call Discord, `GET auth/login`,
+ * `GET auth/callback` and `POST auth/issue`: a sign-in gives anybody a signed `state`, and a
+ * callback with it and a made-up `code` costs Discord a request from the hub's application.
+ */
+export const AUTH_LIMIT_PER_MINUTE = 30;
+/**
+ * Requests a minute from one client to every other route but `GET me`: the pages' calls, and
+ * `auth/logout`.
+ */
+export const LIMIT_PER_MINUTE = 120;
+/** The limits' window: a minute. */
+const LIMIT_WINDOW_MS = 60_000;
 
 /** How long a session lasts. */
 export const SESSION_TTL_SECONDS = 24 * 60 * 60;
@@ -173,6 +196,25 @@ const noStore: MiddlewareHandler = async (c, next) => {
   await next();
 };
 
+/**
+ * Lets a request through only with the secret CloudFront adds, its `current` value or its
+ * `previous` one, each compared in constant time: anything else is 400 `not_through_the_site`
+ * before it is counted or read. An empty value matches nothing. Neither the value given nor the
+ * secret is logged or answered.
+ */
+const throughTheSite = (
+  secret: NonNullable<HubSettings["originSecret"]>,
+): MiddlewareHandler => {
+  const values = [secret.current, secret.previous].filter((value): value is string => !!value);
+  return async (c, next) => {
+    const given = c.req.header(ORIGIN_SECRET_HEADER);
+    if (given === undefined || !values.some((value) => sameString(given, value))) {
+      return c.json({ error: "not_through_the_site" }, 400);
+    }
+    return next();
+  };
+};
+
 /** A product's row in the hub's table. */
 type ProductEntry = Pick<ProductClientOptions, "product" | "label" | "api" | "signer">;
 
@@ -199,9 +241,23 @@ type ProductEntry = Pick<ProductClientOptions, "product" | "label" | "api" | "si
  *   the settings' `products` 400 `unknown_product`; its secret out of reach 503
  *   `product_not_configured`.
  *
- * Every `POST` must name the page's origin: 400 `bad_origin` otherwise. Without settings every
- * route answers 503 `sign_in_not_configured`. A failure of its own is 500 `internal`. It never
- * answers 403 or 404: the production CDN turns those into another page.
+ * Before any route, in this order:
+ *
+ * 1. With `settings.originSecret` (the Lambda's; `pnpm dev` and `pnpm preview` have none), a
+ *    request must carry its `current` or `previous` value in {@link ORIGIN_SECRET_HEADER}, which
+ *    CloudFront adds: 400 `not_through_the_site` otherwise, and the request is not counted.
+ * 2. A limit by client, the key `clientKey` makes of `X-Hub-Viewer-Ip` (an IPv6 address by its
+ *    /56, no address one shared key), trusted only because of 1, counted in this instance's
+ *    memory: {@link AUTH_LIMIT_PER_MINUTE} to `GET auth/login`, `GET auth/callback` and
+ *    `POST auth/issue`, the three that call Discord, and {@link LIMIT_PER_MINUTE}, apart, to every
+ *    other route, `auth/logout` among them, but `GET me`, which isn't counted: it reads the cookie
+ *    and calls nobody, and the sign-in page asks it every 1.5 s while a sign-in window is open.
+ *    Over the limit, the three, which a browser opens as pages, send it to
+ *    `${base}login?signin=busy`; anything else is 429 `rate_limited` with `Retry-After`.
+ * 3. Every `POST` must name the page's origin: 400 `bad_origin` otherwise.
+ *
+ * Without settings every route answers 503 `sign_in_not_configured`. A failure of its own is 500
+ * `internal`. It never answers 403 or 404: the production CDN turns those into another page.
  */
 export function createHub(settings: HubSettings | undefined, deps: HubDeps = {}): Hono {
   if (!settings) {
@@ -256,6 +312,41 @@ export function createHub(settings: HubSettings | undefined, deps: HubDeps = {})
 
   const app = new Hono().basePath(`${base}hub`);
   app.use(noStore);
+  if (settings.originSecret) app.use(throughTheSite(settings.originSecret));
+
+  const signInLimit = rateLimiter(AUTH_LIMIT_PER_MINUTE, LIMIT_WINDOW_MS, now);
+  const otherLimit = rateLimiter(LIMIT_PER_MINUTE, LIMIT_WINDOW_MS, now);
+  /**
+   * The three routes that call Discord, by method and path. A browser opens each as a page, so
+   * over the limit they send it to one.
+   */
+  const signIns = new Set([
+    `GET ${base}hub/auth/login`,
+    `GET ${base}hub/auth/callback`,
+    `POST ${base}hub/auth/issue`,
+  ]);
+  /** Not counted: it reads the cookie and calls nobody, and the sign-in page polls it. */
+  const unlimited = `GET ${base}hub/me`;
+  let viewerIpMissingLogged = false;
+  app.use(async (c, next) => {
+    // Hono runs a HEAD request through the GET handler, so it counts as the GET it runs.
+    const method = c.req.method === "HEAD" ? "GET" : c.req.method;
+    const route = `${method} ${c.req.path}`;
+    if (route === unlimited) return next();
+    const signIn = signIns.has(route);
+    const client = clientKey(c.req.header(VIEWER_IP_HEADER));
+    // Behind CloudFront the header is always there: without it every request is one client.
+    if (client === "unknown" && settings.originSecret && !viewerIpMissingLogged) {
+      viewerIpMissingLogged = true;
+      console.warn("viewer_ip_missing");
+    }
+    const hit = (signIn ? signInLimit : otherLimit).hit(client);
+    if (hit.allowed) return next();
+    if (signIn) return c.redirect(`${base}login?signin=busy`, 303);
+    c.header("Retry-After", String(hit.retryAfterSeconds ?? 1));
+    return c.json({ error: "rate_limited" }, 429);
+  });
+
   app.use(async (c, next) => {
     // A `POST` is the page's only if it names the page's origin: the session cookie reaches this
     // backend from any page of the site, so the cookie alone doesn't say the request came from ours.

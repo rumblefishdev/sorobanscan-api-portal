@@ -129,6 +129,20 @@ describe("the boot module", () => {
       expect(root()?.textContent).toBe("");
     });
 
+    // The hub's sign-in page, where its backend sends a refused round trip, `busy` among them.
+    it("hands the hub's sign-in page's outcome to the opener as it is", async () => {
+      opener({ postMessage });
+      window.name = "stellar-portal-oauth";
+      await boot("/api/login?signin=busy");
+
+      expect(postMessage).toHaveBeenCalledExactlyOnceWith(
+        { source: "stellar-portal-oauth", search: "?signin=busy" },
+        window.location.origin,
+      );
+      expect(window.close).toHaveBeenCalledOnce();
+      expect(root()?.textContent).toBe("");
+    });
+
     it("boots the page when the window has no opener", async () => {
       opener(null);
       window.name = "stellar-portal-oauth";
