@@ -548,3 +548,139 @@ describe("the x402 tab", () => {
     );
   });
 });
+
+/**
+ * "Get API Key" in a second window, as the sign-in is (akot, 2026-11-20): the form's `POST` goes
+ * to a window of its own, the tab stays, and takes the outcome from the window when it comes back.
+ */
+describe("the x402 tab's Get API Key window", () => {
+  /** What `window.open` hands back: enough of a window for the page to watch. */
+  const fakeWindow = () => ({ closed: false, focus: vi.fn() });
+  const opens = (popup: unknown) =>
+    vi.spyOn(window, "open").mockReturnValue(popup as unknown as Window);
+  /** The window's last word, as `bridgeOAuthPopup` posts it from where the backend left it. */
+  const windowLands = (search: string, origin = window.location.origin) =>
+    act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", { origin, data: { source: "stellar-portal-oauth", search } }),
+      );
+    });
+  /** The form, once the card offers it. */
+  const getKeyForm = async () =>
+    (await screen.findByRole("button", { name: "Get API Key" })).closest("form") as HTMLFormElement;
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("posts the form to a second window and says it is waiting", async () => {
+    stubHub({ account: () => answer(200, NO_KEY) });
+    const open = opens(fakeWindow());
+    renderAt("/api/dashboard/x402");
+    const form = await getKeyForm();
+    // The submit goes ahead: it is the form's own `POST`, with the window as its target.
+    expect(fireEvent.submit(form)).toBe(true);
+    expect(open).toHaveBeenCalledWith("", "stellar-portal-oauth", expect.stringContaining("popup=yes"));
+    expect(form.target).toBe("stellar-portal-oauth");
+
+    const button = within(form).getByRole("button") as HTMLButtonElement;
+    expect(button.textContent).toBe("Waiting for Discord…");
+    expect(button.disabled).toBe(true);
+    expect(screen.getByTestId("issue-waiting").getAttribute("role")).toBe("status");
+    expect(where).toBe("/dashboard/x402");
+  });
+
+  it("takes the key the window came back with, and reads the account again", async () => {
+    const fetchMock = stubHub({ account: [() => answer(200, NO_KEY), () => answer(200, ACTIVE)] });
+    opens(fakeWindow());
+    renderAt("/api/dashboard/x402");
+    fireEvent.submit(await getKeyForm());
+    await windowLands("?issue=issued");
+
+    expect((await screen.findByTestId("issue-issued")).textContent).toBe(
+      "Your API key is ready. Show or copy it below.",
+    );
+    expect(within(await card()).getByText("Active")).toBeTruthy();
+    expect(screen.queryByTestId("issue-waiting")).toBeNull();
+    expect(requests(fetchMock).filter((r) => r.endsWith("/account"))).toHaveLength(2);
+    // The outcome came from the window, not the address: the tab went nowhere.
+    expect(where).toBe("/dashboard/x402");
+  });
+
+  it("says the refusal the window came back with, and offers Get API Key again", async () => {
+    stubHub({ account: () => answer(200, NO_KEY) });
+    opens(fakeWindow());
+    renderAt("/api/dashboard/x402");
+    fireEvent.submit(await getKeyForm());
+    await windowLands("?issue=not_member");
+
+    expect(await screen.findByTestId("issue-not-member")).toBeTruthy();
+    const button = (await screen.findByRole("button", { name: "Get API Key" })) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+  });
+
+  // The window's two halves outlived their 10 minutes, or its cookie was gone: the backend can no
+  // longer tell it was an issue and lands it on the sign-in page with a refusal.
+  it("says a failed issue when the window ended on the sign-in page's refusal", async () => {
+    stubHub({ account: () => answer(200, NO_KEY) });
+    opens(fakeWindow());
+    renderAt("/api/dashboard/x402");
+    fireEvent.submit(await getKeyForm());
+    await windowLands("?signin=failed");
+    expect(await screen.findByTestId("issue-failed")).toBeTruthy();
+  });
+
+  it("has the window's outcome stand in for the one the address came with", async () => {
+    stubHub({ account: () => answer(200, NO_KEY) });
+    opens(fakeWindow());
+    renderAt("/api/dashboard/x402?issue=cancelled");
+    expect(await screen.findByTestId("issue-cancelled")).toBeTruthy();
+    fireEvent.submit(await getKeyForm());
+    expect(screen.queryByTestId("issue-cancelled")).toBeNull();
+    await windowLands("?issue=too_young");
+    expect(await screen.findByTestId("issue-too-young")).toBeTruthy();
+    expect(screen.queryByTestId("issue-cancelled")).toBeNull();
+  });
+
+  it("is the plain form, posted in the tab, where the browser opens no window", async () => {
+    stubHub({ account: () => answer(200, NO_KEY) });
+    opens(null);
+    renderAt("/api/dashboard/x402");
+    const form = await getKeyForm();
+    expect(fireEvent.submit(form)).toBe(true);
+    expect(form.target).toBe("");
+    const button = within(form).getByRole("button") as HTMLButtonElement;
+    expect(button.textContent).toBe("Get API Key");
+    expect(button.disabled).toBe(false);
+    expect(screen.queryByTestId("issue-waiting")).toBeNull();
+  });
+
+  it("reads the account again when the window is shut without a word", async () => {
+    const fetchMock = stubHub({ account: () => answer(200, NO_KEY) });
+    const popup = fakeWindow();
+    opens(popup);
+    renderAt("/api/dashboard/x402");
+    const form = await getKeyForm();
+    vi.useFakeTimers();
+    fireEvent.submit(form);
+    expect(screen.getByTestId("issue-waiting")).toBeTruthy();
+
+    popup.closed = true;
+    await act(() => vi.advanceTimersByTimeAsync(5000));
+    expect(screen.queryByTestId("issue-waiting")).toBeNull();
+    expect(document.querySelector('[data-testid^="issue-"]')).toBeNull();
+    expect(requests(fetchMock).filter((r) => r.endsWith("/account"))).toHaveLength(2);
+  });
+
+  it("doesn't take another site's word for the window's", async () => {
+    const fetchMock = stubHub({ account: () => answer(200, NO_KEY) });
+    opens(fakeWindow());
+    renderAt("/api/dashboard/x402");
+    fireEvent.submit(await getKeyForm());
+    await windowLands("?issue=issued", "https://evil.example");
+    await settle();
+    expect(screen.getByTestId("issue-waiting")).toBeTruthy();
+    expect(screen.queryByTestId("issue-issued")).toBeNull();
+    expect(requests(fetchMock).filter((r) => r.endsWith("/account"))).toHaveLength(1);
+  });
+});

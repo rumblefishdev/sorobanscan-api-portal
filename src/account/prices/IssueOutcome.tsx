@@ -26,6 +26,10 @@ export type IssueOutcome = (typeof OUTCOMES)[number];
 const isOutcome = (value: string | null): value is IssueOutcome =>
   (OUTCOMES as readonly (string | null)[]).includes(value);
 
+/** The outcome an `?issue=` value names, or `null` for one this page doesn't know. */
+export const issueOutcomeOf = (value: string | null): IssueOutcome | null =>
+  isOutcome(value) ? value : null;
+
 /**
  * `?issue=`, read once and taken off the address, as the Prices portal's `useOneShotParams` does:
  * the outcome stays on screen for this visit, and a reload, a bookmark or Back shows no stale
@@ -35,10 +39,7 @@ const isOutcome = (value: string | null): value is IssueOutcome =>
 export function useIssueOutcome(): IssueOutcome | null {
   const [searchParams, setSearchParams] = useSearchParams();
   // Captured once per mount; StrictMode's rehearsal keeps state, so the capture survives it.
-  const [outcome] = useState(() => {
-    const value = searchParams.get("issue");
-    return isOutcome(value) ? value : null;
-  });
+  const [outcome] = useState(() => issueOutcomeOf(searchParams.get("issue")));
   const present = searchParams.has("issue");
   const stripped = useRef(false);
   useEffect(() => {

@@ -820,3 +820,55 @@ describe("the Prices tab", () => {
     );
   });
 });
+
+/**
+ * "Get API Key" in a second window, as the sign-in is (akot, 2026-11-20). The window's watch and
+ * its refusals are the x402 tab's tests (`../x402/X402Tab.spec.tsx`): one hook serves both tabs.
+ */
+describe("the Prices tab's Get API Key window", () => {
+  const opens = (popup: unknown) =>
+    vi.spyOn(window, "open").mockReturnValue(popup as unknown as Window);
+  const getKeyForm = async () =>
+    (await screen.findByRole("button", { name: "Get API Key" })).closest("form") as HTMLFormElement;
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("posts the form to a second window, and takes the key it came back with", async () => {
+    const fetchMock = stubHub({ account: [() => answer(200, NO_KEY), () => answer(200, ACTIVE)] });
+    const open = opens({ closed: false, focus: vi.fn() });
+    renderAt("/api/dashboard/prices");
+    const form = await getKeyForm();
+    expect(fireEvent.submit(form)).toBe(true);
+    expect(open).toHaveBeenCalledWith("", "stellar-portal-oauth", expect.stringContaining("popup=yes"));
+    expect(form.target).toBe("stellar-portal-oauth");
+    expect([...new FormData(form).entries()]).toEqual([["product", "prices"]]);
+    const button = within(form).getByRole("button") as HTMLButtonElement;
+    expect(button.textContent).toBe("Waiting for Discord…");
+    expect(button.disabled).toBe(true);
+
+    await act(() => {
+      window.dispatchEvent(
+        new MessageEvent("message", {
+          origin: window.location.origin,
+          data: { source: "stellar-portal-oauth", search: "?issue=issued" },
+        }),
+      );
+    });
+    expect(await screen.findByTestId("issue-issued")).toBeTruthy();
+    expect(await card("Your API Key is ready")).toBeTruthy();
+    expect(requests(fetchMock).filter((r) => r.endsWith("/account"))).toHaveLength(2);
+    expect(where).toBe("/dashboard/prices");
+  });
+
+  it("is the plain form, posted in the tab, where the browser opens no window", async () => {
+    stubHub({ account: () => answer(200, NO_KEY) });
+    opens(null);
+    renderAt("/api/dashboard/prices");
+    const form = await getKeyForm();
+    expect(fireEvent.submit(form)).toBe(true);
+    expect(form.target).toBe("");
+    expect((within(form).getByRole("button") as HTMLButtonElement).disabled).toBe(false);
+  });
+});
