@@ -9,7 +9,7 @@ import { ME_TIMEOUT_MS } from "./session";
 let where = "";
 function Where() {
   const location = useLocation();
-  where = `${location.pathname}${location.search}`;
+  where = `${location.pathname}${location.search}${location.hash}`;
   return null;
 }
 
@@ -838,5 +838,38 @@ describe("/dashboard", () => {
       await settle();
       expect(assign).toHaveBeenCalledExactlyOnceWith("/api/");
     });
+  });
+});
+
+describe("an address under an API's page", () => {
+  beforeEach(() => {
+    vi.stubEnv("VITE_PRODUCTS", "prices,x402");
+    stubBackend(() => answer(200, SIGNED_IN));
+  });
+
+  it.each([
+    ["/docs/prices/anything", "/docs/prices"],
+    ["/docs/x402/a/b", "/docs/x402"],
+    ["/quick-start/x402/extra", "/quick-start/x402"],
+    // An unknown API: the page puts it on the first tab, as it does without the extra part.
+    ["/docs/nope/x", "/docs/prices"],
+    ["/docs/prices/x#rate-limits", "/docs/prices#rate-limits"],
+  ])("%s goes to %s", async (from, to) => {
+    renderAt(`/api${from}`);
+    await vi.waitFor(() => expect(where).toBe(to));
+  });
+
+  it("keeps /docs/prices/ where it is", async () => {
+    renderAt("/api/docs/prices/");
+    await settle();
+    expect(where).toBe("/docs/prices/");
+  });
+
+  it("leaves the account pages for the landing page at an address it doesn't know", async () => {
+    const replace = vi.fn();
+    vi.stubGlobal("location", { replace });
+    renderAt("/api/login/extra");
+    await vi.waitFor(() => expect(replace).toHaveBeenCalledTimes(1));
+    expect(replace).toHaveBeenCalledWith("/api/");
   });
 });
