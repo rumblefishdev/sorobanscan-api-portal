@@ -86,6 +86,27 @@ describe("the privacy policy page", () => {
     }
   });
 
+  /**
+   * ⚠️ The bar named no product here, so its links were the bare `/api/quick-start` and
+   * `/api/docs`, which a browser holding the explorer's old `301` takes into the Prices portal
+   * (`src/links.ts`). They open the first tab, as every other link to those pages does.
+   */
+  it.each([
+    ["a visitor", SIGNED_OUT, "Documentation"],
+    ["an account", SIGNED_IN, "Dashboard"],
+  ])("links the bar to the first tab's documentation, for %s", async (_who, me, barName) => {
+    stubMe(me);
+    renderAt("/api/privacy-policy");
+    await policyHeading();
+    const bar = within(await screen.findByRole("navigation", { name: barName }));
+    expect(bar.getByRole("link", { name: /quick start/i }).getAttribute("href")).toBe(
+      "/api/quick-start/prices",
+    );
+    expect(bar.getByRole("link", { name: /openapi docs/i }).getAttribute("href")).toBe(
+      "/api/docs/prices",
+    );
+  });
+
   it("draws the footer, whose Privacy policy link is the page's own address", async () => {
     stubMe(SIGNED_OUT);
     renderAt("/api/privacy-policy");

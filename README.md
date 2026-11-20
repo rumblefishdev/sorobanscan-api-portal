@@ -71,9 +71,10 @@ The hub shows the SorobanScan favicons, the Prices portal's.
 
 Its code is in `src/prices/`, copied from stellar-prices-api at `7d9e9e70`: `web/portal/src/X`
 is `src/prices/X`, with Prices' names, code style and comments. `src/boot.js` picks the tree by
-the address: `/api/prices-api` and everything under it boots the Prices portal, `/api/login`,
-`/api/dashboard`, `/api/quick-start`, `/api/docs` and everything under the last three the sign-in
-page, the dashboard and the two documentation pages (`src/account/`, below), every other address the hub. Each tree brings its own styles, fonts and
+the address: `/api/prices-api` and everything under it boots the Prices portal; `/api/login`,
+`/api/privacy-policy`, `/api/dashboard`, `/api/quick-start`, `/api/docs` and everything under each
+of them the account pages: the sign-in, the privacy policy, the dashboard and the two documentation
+pages (`src/account/`, below); every other address the hub. Each tree brings its own styles, fonts and
 router, so none's reach another. `tsconfig.prices.json` checks `src/prices` with Prices' own
 compiler options, and `src/account` with them, since it is built from Prices' theme and
 components; the hub's `tsconfig.json` leaves both out, and no hub TypeScript file imports from
