@@ -92,9 +92,9 @@ export class BackendStack extends Stack {
         resources: [
           sessionSecret.secretArn,
           originSecret.secretArn,
-          discordSecret.secretArn,
-          pricesToken.secretArn,
-          x402Token.secretArn,
+          withSuffix(discordSecret.secretArn),
+          withSuffix(pricesToken.secretArn),
+          withSuffix(x402Token.secretArn),
         ],
       }),
     );
@@ -104,6 +104,14 @@ export class BackendStack extends Stack {
     new CfnOutput(this, "FunctionUrlHost", { value: hostOf(url.url) });
     new CfnOutput(this, "OriginSecretName", { value: `${SECRET_PREFIX}/origin-secret` });
   }
+}
+
+/**
+ * `fromSecretNameV2` gives an ARN without the six characters Secrets Manager appends to every
+ * secret's, which IAM would never match; `-??????` stands for them.
+ */
+function withSuffix(arn: string): string {
+  return `${arn}-??????`;
 }
 
 /** `https://abc.lambda-url.eu-central-1.on.aws/` as its host, resolved at deploy time. */

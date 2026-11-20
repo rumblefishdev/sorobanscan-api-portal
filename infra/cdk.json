@@ -1,4 +1,4 @@
 {
-  "app": "node infra/bin/hub.ts",
+  "app": "node --experimental-strip-types infra/bin/hub.ts",
   "output": "infra/cdk.out"
 }
