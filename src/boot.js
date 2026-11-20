@@ -17,11 +17,12 @@ export function isPricesPath(pathname, base) {
  * Whether `pathname` is one of the account pages, every product's: the sign-in, `${base}login`,
  * the privacy policy, `${base}privacy-policy`, and the dashboard, the quick start and the API
  * reference, each with anything under it (a product's tab, and under `docs` the product's OpenAPI
- * document, which is a file and never reaches this page).
+ * document, which is a file and never reaches this page). A trailing slash or an unknown address
+ * under `login` or `privacy-policy` is the tree's too: its router answers it, rather than the
+ * hub's landing page drawing at a legal page's address.
  */
 export function isAccountPath(pathname, base) {
-  if (pathname === `${base}login` || pathname === `${base}privacy-policy`) return true;
-  return ["dashboard", "quick-start", "docs"].some((page) => {
+  return ["login", "privacy-policy", "dashboard", "quick-start", "docs"].some((page) => {
     const address = `${base}${page}`;
     return pathname === address || pathname.startsWith(`${address}/`);
   });
