@@ -8,6 +8,7 @@ import { Footer } from "../prices/landing/Chrome";
 import { color } from "../prices/theme/tokens";
 import { AccountNavbar, SignOutFailed } from "./AccountNavbar";
 import { useSignOut, type Session } from "./session";
+import { usePagePlace } from "./usePagePlace";
 
 /**
  * `/privacy-policy`: the policy for every API, a page of this tree since 2026-11-20. It was the
@@ -25,16 +26,13 @@ const PrivacyPolicy = lazy(() => import("../prices/privacy/PrivacyPolicy"));
 
 export function PrivacyPolicyPage({ session }: { session: Session }) {
   const signOut = useSignOut();
+  usePagePlace("privacy-policy");
   const address = `${window.location.origin}${import.meta.env.BASE_URL}privacy-policy`;
 
   return (
     <>
       {/* React 19 hoists these into `<head>`, over the hub's `index.html` title. */}
       <title>Privacy policy — Soroban Scan APIs</title>
-      <meta
-        name="description"
-        content="Which personal data the Soroban Scan APIs keep, from the Discord account you sign in with to the keys and requests of each API, why, and for how long."
-      />
       <link rel="canonical" href={address} />
       {session.state === "signed_in" ? (
         <AccountNavbar
