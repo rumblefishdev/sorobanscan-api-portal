@@ -221,6 +221,7 @@ const WORDS: Record<string, string> = {
   bad_origin: "the request didn't come from this page — reload it and try again",
   no_key: "you have no API key",
   key_revoked: "your API key was revoked",
+  rate_limited: "too many requests — wait a minute and try again",
   internal: "the hub failed — try again, and tell us if it keeps happening",
   timeout: `the hub didn't answer within ${HUB_TIMEOUT_MS / 1000} seconds — try again`,
   unreachable: "the hub could not be reached — check your connection and try again",

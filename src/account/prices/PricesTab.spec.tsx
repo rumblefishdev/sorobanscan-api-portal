@@ -727,6 +727,12 @@ describe("the Prices tab", () => {
       "this server doesn't offer the Prices API tab (unknown_product)",
     ],
     [
+      // The hub's own limit by address: the visitor's to wait out, not a fault to report.
+      "429 rate_limited",
+      () => answer(429, { error: "rate_limited" }),
+      "too many requests — wait a minute and try again (rate_limited)",
+    ],
+    [
       "500 internal",
       () => answer(500, { error: "internal" }),
       "the hub failed — try again, and tell us if it keeps happening (internal)",
