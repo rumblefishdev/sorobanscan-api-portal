@@ -18,15 +18,34 @@ export interface GetKeyControl {
 }
 
 /**
+ * Why a sign-in is refused, as the backend names it in `?signin=` (`Refusal` in `bff/src/app.ts`).
+ * Each is an issue's outcome too, with the same meaning, so the tab has words for it.
+ */
+const SIGNIN_REFUSALS: readonly IssueOutcome[] = [
+  "cancelled",
+  "failed",
+  "not_member",
+  "pending_rules",
+  "unknown",
+];
+
+/**
  * How the window's round trip ended, from the query of the address the backend left it at. An
  * issue's lands on its tab with `?issue=<outcome>`. One the backend could no longer tell was an
  * issue (its two halves outlived their 10 minutes, or the cookie was gone) lands on the sign-in
- * page with `?signin=<reason>`: no key was issued. Anything else says nothing, and the account
- * read that follows says what is so (a session that ended lands on the sign-in page with no query).
+ * page with `?signin=<reason>`: no key was issued, and the reason is the tab's to say as it is, so
+ * an account that has not accepted the server's rules is told that and not "we could not create
+ * your key" (akot, 2026-11-20). A reason the sign-in page doesn't have is a failed issue. Anything
+ * else says nothing, and the account read that follows says what is so (a session that ended lands
+ * on the sign-in page with no query).
  */
 function outcomeOf(search: string): IssueOutcome | null {
   const query = new URLSearchParams(search);
-  return issueOutcomeOf(query.get("issue")) ?? (query.has("signin") ? "failed" : null);
+  const issue = issueOutcomeOf(query.get("issue"));
+  if (issue !== null) return issue;
+  if (!query.has("signin")) return null;
+  const refusal = issueOutcomeOf(query.get("signin"));
+  return refusal !== null && SIGNIN_REFUSALS.includes(refusal) ? refusal : "failed";
 }
 
 /**

@@ -862,6 +862,30 @@ describe("the Prices tab's Get API Key window", () => {
     expect(where).toBe("/dashboard/prices");
   });
 
+  // An account that has not accepted the server's rules is told so, whichever page the backend
+  // left the window on (akot, 2026-11-20): never "We could not create your key".
+  it.each(["?issue=pending_rules", "?signin=pending_rules"])(
+    "says the rules are not accepted yet when the window lands with %s",
+    async (search) => {
+      stubHub({ account: () => answer(200, NO_KEY) });
+      opens({ closed: false, focus: vi.fn() });
+      renderAt("/api/dashboard/prices");
+      fireEvent.submit(await getKeyForm());
+      await act(() => {
+        window.dispatchEvent(
+          new MessageEvent("message", {
+            origin: window.location.origin,
+            data: { source: "stellar-portal-oauth", search },
+          }),
+        );
+      });
+      expect((await screen.findByTestId("issue-pending-rules")).textContent).toBe(
+        "Your Discord account is on the Stellar Developers Discord, but you have not accepted the server's rules yet. Accept them on Discord, then try again.",
+      );
+      expect(screen.queryByTestId("issue-failed")).toBeNull();
+    },
+  );
+
   it("is the plain form, posted in the tab, where the browser opens no window", async () => {
     stubHub({ account: () => answer(200, NO_KEY) });
     opens(null);
