@@ -291,6 +291,34 @@ describe("the request limit", () => {
     },
   );
 
+  // Hono runs a HEAD request through the GET handler, so it exchanges the code with Discord too:
+  // it is counted as the GET it runs.
+  it.each([
+    ["/api/hub/auth/callback?code=c&state=s", "/api/login?signin=failed"],
+    ["/api/hub/auth/login", undefined],
+  ])("counts a HEAD %s as the GET it runs", async (path, usual) => {
+    const hub = startHub();
+    for (let i = 0; i < 30; i++) {
+      const response = await hub.send(path, { method: "HEAD" });
+      expect(response.status, `request ${i + 1}`).toBe(303);
+      if (usual) expect(locationOf(response), `request ${i + 1}`).toBe(usual);
+    }
+    const busy = await hub.send(path, { method: "HEAD" });
+    expect(busy.status).toBe(303);
+    expect(locationOf(busy)).toBe(BUSY);
+    // A GET shares the count.
+    expect(locationOf(await hub.send(path))).toBe(BUSY);
+  });
+
+  it("never counts HEAD me", async () => {
+    const hub = startHub();
+    for (let i = 0; i < 500; i++) {
+      expect((await hub.send("/api/hub/me", { method: "HEAD" })).status, `me ${i + 1}`).toBe(200);
+    }
+    for (let i = 0; i < 120; i++) await hub.send(ACCOUNT);
+    await expectRateLimited(await hub.send(ACCOUNT));
+  });
+
   // It calls nobody, and the sign-in page asks it every 1.5 s while a sign-in window is open:
   // counted, a few sign-ins behind one address would spend the dashboard's 120, and a sign-in that
   // worked would read as failed.
