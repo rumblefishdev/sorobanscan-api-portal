@@ -67,6 +67,9 @@ describe("the tests' config", () => {
         testTimeout: 15_000,
       },
     });
-    expect(test?.projects).toHaveLength(2);
+    expect(project("infra")).toMatchObject({
+      test: { include: ["infra/test/**/*.test.ts"], environment: "node" },
+    });
+    expect(test?.projects).toHaveLength(3);
   });
 });
