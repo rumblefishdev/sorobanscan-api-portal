@@ -327,15 +327,20 @@ export function createHub(settings: HubSettings | undefined, deps: HubDeps = {})
   ]);
   /** Not counted: it reads the cookie and calls nobody, and the sign-in page polls it. */
   const unlimited = `GET ${base}hub/me`;
+  let viewerIpMissingLogged = false;
   app.use(async (c, next) => {
     // Hono runs a HEAD request through the GET handler, so it counts as the GET it runs.
     const method = c.req.method === "HEAD" ? "GET" : c.req.method;
     const route = `${method} ${c.req.path}`;
     if (route === unlimited) return next();
     const signIn = signIns.has(route);
-    const hit = (signIn ? signInLimit : otherLimit).hit(
-      clientKey(c.req.header(VIEWER_IP_HEADER)),
-    );
+    const client = clientKey(c.req.header(VIEWER_IP_HEADER));
+    // Behind CloudFront the header is always there: without it every request is one client.
+    if (client === "unknown" && settings.originSecret && !viewerIpMissingLogged) {
+      viewerIpMissingLogged = true;
+      console.warn("viewer_ip_missing");
+    }
+    const hit = (signIn ? signInLimit : otherLimit).hit(client);
     if (hit.allowed) return next();
     if (signIn) return c.redirect(`${base}login?signin=busy`, 303);
     c.header("Retry-After", String(hit.retryAfterSeconds ?? 1));

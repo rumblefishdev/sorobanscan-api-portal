@@ -319,6 +319,25 @@ describe("the request limit", () => {
     await expectRateLimited(await hub.send(ACCOUNT));
   });
 
+  // If CloudFront stops delivering the header, every request is one client; the line says so.
+  it("logs viewer_ip_missing once when the address never arrives behind CloudFront", async () => {
+    const hub = startHub({ originSecret: ORIGIN_SECRET });
+    await hub.send(ACCOUNT, { ip: null });
+    await hub.send(ACCOUNT, { ip: null });
+    await hub.send(ACCOUNT, { ip: "not an address" });
+    expect(logged().match(/viewer_ip_missing/g)).toHaveLength(1);
+    expect(logged()).not.toContain("not an address");
+  });
+
+  it("logs nothing about the address when it arrives, or with no origin secret", async () => {
+    const behind = startHub({ originSecret: ORIGIN_SECRET });
+    await behind.send(ACCOUNT);
+    const dev = startHub();
+    await dev.send(ACCOUNT, { ip: null });
+    await dev.send(ACCOUNT, { ip: null });
+    expect(logged()).not.toContain("viewer_ip_missing");
+  });
+
   // It calls nobody, and the sign-in page asks it every 1.5 s while a sign-in window is open:
   // counted, a few sign-ins behind one address would spend the dashboard's 120, and a sign-in that
   // worked would read as failed.
