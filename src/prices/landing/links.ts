@@ -131,13 +131,20 @@ export const QUICKSTART_ROUTE = '/quick-start';
 export const QUICKSTART = `${import.meta.env.BASE_URL}quick-start/prices`;
 
 /**
- * The privacy policy — a page of this app (task 0303), rendered from
- * `src/privacy/privacy-policy.md`, at the name the explorer's footer and the
- * corporate site use for theirs. A ROUTE like the quick start; `PRIVACY_POLICY`
- * is the same place as an absolute href.
+ * The privacy policy, a page of the hub's since 2026-11-20 (akot), one for every
+ * API: `/api/privacy-policy`. It was this app's own page, at
+ * `/api/prices-api/privacy-policy`, which {@link HUB_PRIVACY_POLICY} replaces.
+ * Under the bundle's `base`, as {@link HUB_LOGIN} is, and a plain `href` from
+ * this app for the same reason: a router link would make it
+ * `/api/prices-api/api/privacy-policy`. Every link to the policy names it.
  */
-export const PRIVACY_POLICY_ROUTE = '/privacy-policy';
-export const PRIVACY_POLICY = `${ROUTER_BASENAME}${PRIVACY_POLICY_ROUTE}`;
+export const PRIVACY_POLICY = `${import.meta.env.BASE_URL}privacy-policy`;
+
+/**
+ * Where this app's own `/privacy-policy` sends the browser: the same page, the
+ * query telling the hub's side which portal's old address was followed.
+ */
+export const HUB_PRIVACY_POLICY = `${import.meta.env.BASE_URL}privacy-policy?from=prices`;
 
 /**
  * The official Stellar Discord — **Stellar Developers**, and no other server
