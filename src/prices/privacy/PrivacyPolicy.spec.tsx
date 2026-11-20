@@ -68,7 +68,7 @@ describe('the privacy policy page', () => {
     ).toBe('STRONG');
     expect(screen.getByText('identify').tagName).toBe('CODE');
     // The date the page carries for the text.
-    expect(screen.getByText(/version of 29 september 2026/i)).toBeTruthy();
+    expect(screen.getByText(/version of 20 november 2026/i)).toBeTruthy();
   });
 });
 
@@ -77,7 +77,8 @@ describe('the privacy policy page and x402', () => {
 
   it('is exactly the reviewed document, as it was, while x402 is off', () => {
     // `privacy-policy.rendered.txt` is the page's text as it was drawn before x402's
-    // section existed; the default build and a build naming Prices alone must match it.
+    // section existed, but for the date, which `POLICY_DATED` moves for either file;
+    // the default build and a build naming Prices alone must match it.
     for (const setting of [undefined, '', 'prices']) {
       vi.stubEnv('VITE_PRODUCTS', setting as string);
       const { container, unmount } = render(<PrivacyPolicy />);
@@ -103,5 +104,7 @@ describe('the privacy policy page and x402', () => {
     // The reviewed sections stay as they were.
     expect(headings[0].textContent).toBe('1. Controller of Your Personal Data');
     expect(document.body.textContent).toMatch(/SHA-256/);
+    // The section's inline marks are markup too.
+    expect(screen.getByText('stellar:pubnet').tagName).toBe('CODE');
   });
 });

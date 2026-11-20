@@ -27,11 +27,12 @@ const policyOf = (products: readonly string[]) =>
   products.includes('x402') ? appendSection(POLICY, x402Md) : POLICY;
 
 /**
- * The date of the text in `privacy-policy.md`. The document carries none of
- * its own, and a policy without one cannot say which version a visitor read
- * — bump it with every edit to the file.
+ * The date of the text in `privacy-policy.md` and `privacy-policy-x402.md`.
+ * The documents carry none of their own, and a policy without one cannot say
+ * which version a visitor read — bump it with every edit to either file.
+ * `privacy-policy.rendered.txt` holds it too, so it changes with it.
  */
-export const POLICY_DATED = '29 September 2026';
+export const POLICY_DATED = '20 November 2026';
 
 /**
  * `**bold**`, `` `code` `` and the hard line breaks the draft writes with two
