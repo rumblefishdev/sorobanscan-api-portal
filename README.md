@@ -172,13 +172,16 @@ Before any route, after its `no-store` headers, the backend checks a request in 
 2. **A limit by client.** The client is the address in `X-Hub-Viewer-Ip`, which CloudFront's
    function writes from the viewer's, and which the limit trusts only because of 1. An IPv6
    address counts by its /56; a missing or malformed one, as every request on the dev server, is
-   one client with every other such request. 30 requests a minute to `auth/*` and 120 to the
-   rest, counted apart, so the dashboard keeps working for people behind one address who have
-   spent the sign-in's, and kept in each instance's memory. Over the limit, `GET auth/login`,
-   `GET auth/callback` and `POST auth/issue`, which a browser opens as pages, send the browser to
-   `/api/login?signin=busy`, where the sign-in page, or "Get API Key"'s tab when its window lands
-   there, says "Too many sign-in attempts from your network. Try again in a minute."; anything
-   else is 429 `{"error":"rate_limited"}` with `Retry-After`, sign-out among them.
+   one client with every other such request. 30 requests a minute to the three that call
+   Discord (`GET auth/login`, `GET auth/callback`, `POST auth/issue`) and 120 to every other
+   route, `auth/logout` among them, counted apart, so the dashboard keeps working for people
+   behind one address who have spent the sign-in's, and kept in each instance's memory. `GET me`
+   isn't counted: it reads the cookie and calls nobody, and the sign-in page asks it every 1.5 s
+   while a sign-in window is open, so counting it would spend the dashboard's 120 and read a
+   sign-in that worked as failed. Over the limit, the three, which a browser opens as pages, send
+   the browser to `/api/login?signin=busy`, where the sign-in page, or "Get API Key"'s tab when
+   its window lands there, says "Too many sign-in attempts from your network. Try again in a
+   minute."; anything else is 429 `{"error":"rate_limited"}` with `Retry-After`.
 3. **The page's `Origin`** on every `POST`: 400 `{"error":"bad_origin"}` otherwise.
 
 ### The token to Prices

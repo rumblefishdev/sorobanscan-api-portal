@@ -53,11 +53,15 @@ export const ORIGIN_SECRET_HEADER = "x-hub-origin-secret";
 /** Where CloudFront's function writes the viewer's address (`client-address.ts`). */
 const VIEWER_IP_HEADER = "x-hub-viewer-ip";
 /**
- * Requests a minute from one client to `auth/*`: a sign-in gives anybody a signed `state`, and a
+ * Requests a minute from one client to the three routes that call Discord, `GET auth/login`,
+ * `GET auth/callback` and `POST auth/issue`: a sign-in gives anybody a signed `state`, and a
  * callback with it and a made-up `code` costs Discord a request from the hub's application.
  */
 export const AUTH_LIMIT_PER_MINUTE = 30;
-/** Requests a minute from one client to every other address: the pages' reads and calls. */
+/**
+ * Requests a minute from one client to every other route but `GET me`: the pages' calls, and
+ * `auth/logout`.
+ */
 export const LIMIT_PER_MINUTE = 120;
 /** The limits' window: a minute. */
 const LIMIT_WINDOW_MS = 60_000;
@@ -243,11 +247,13 @@ type ProductEntry = Pick<ProductClientOptions, "product" | "label" | "api" | "si
  *    request must carry its `current` or `previous` value in {@link ORIGIN_SECRET_HEADER}, which
  *    CloudFront adds: 400 `not_through_the_site` otherwise, and the request is not counted.
  * 2. A limit by client, the key `clientKey` makes of `X-Hub-Viewer-Ip` (an IPv6 address by its
- *    /56, no address one shared key), trusted only because of 1: {@link AUTH_LIMIT_PER_MINUTE}
- *    to `auth/*` and {@link LIMIT_PER_MINUTE} to the rest, counted apart, in this instance's
- *    memory. Over it, `GET auth/login`, `GET auth/callback` and `POST auth/issue`, which a
- *    browser opens as pages, send it to `${base}login?signin=busy`; anything else is 429
- *    `rate_limited` with `Retry-After`.
+ *    /56, no address one shared key), trusted only because of 1, counted in this instance's
+ *    memory: {@link AUTH_LIMIT_PER_MINUTE} to `GET auth/login`, `GET auth/callback` and
+ *    `POST auth/issue`, the three that call Discord, and {@link LIMIT_PER_MINUTE}, apart, to every
+ *    other route, `auth/logout` among them, but `GET me`, which isn't counted: it reads the cookie
+ *    and calls nobody, and the sign-in page asks it every 1.5 s while a sign-in window is open.
+ *    Over the limit, the three, which a browser opens as pages, send it to
+ *    `${base}login?signin=busy`; anything else is 429 `rate_limited` with `Retry-After`.
  * 3. Every `POST` must name the page's origin: 400 `bad_origin` otherwise.
  *
  * Without settings every route answers 503 `sign_in_not_configured`. A failure of its own is 500
@@ -310,19 +316,26 @@ export function createHub(settings: HubSettings | undefined, deps: HubDeps = {})
 
   const signInLimit = rateLimiter(AUTH_LIMIT_PER_MINUTE, LIMIT_WINDOW_MS, now);
   const otherLimit = rateLimiter(LIMIT_PER_MINUTE, LIMIT_WINDOW_MS, now);
-  const signInRoutes = `${base}hub/auth/`;
-  /** The routes a browser opens as a page: over the limit, they send it to one. */
-  const pages = new Set([
-    `GET ${signInRoutes}login`,
-    `GET ${signInRoutes}callback`,
-    `POST ${signInRoutes}issue`,
+  /**
+   * The three routes that call Discord, by method and path. A browser opens each as a page, so
+   * over the limit they send it to one.
+   */
+  const signIns = new Set([
+    `GET ${base}hub/auth/login`,
+    `GET ${base}hub/auth/callback`,
+    `POST ${base}hub/auth/issue`,
   ]);
+  /** Not counted: it reads the cookie and calls nobody, and the sign-in page polls it. */
+  const unlimited = `GET ${base}hub/me`;
   app.use(async (c, next) => {
-    const { method, path } = c.req;
-    const limit = path.startsWith(signInRoutes) ? signInLimit : otherLimit;
-    const hit = limit.hit(clientKey(c.req.header(VIEWER_IP_HEADER)));
+    const route = `${c.req.method} ${c.req.path}`;
+    if (route === unlimited) return next();
+    const signIn = signIns.has(route);
+    const hit = (signIn ? signInLimit : otherLimit).hit(
+      clientKey(c.req.header(VIEWER_IP_HEADER)),
+    );
     if (hit.allowed) return next();
-    if (pages.has(`${method} ${path}`)) return c.redirect(`${base}login?signin=busy`, 303);
+    if (signIn) return c.redirect(`${base}login?signin=busy`, 303);
     c.header("Retry-After", String(hit.retryAfterSeconds ?? 1));
     return c.json({ error: "rate_limited" }, 429);
   });
