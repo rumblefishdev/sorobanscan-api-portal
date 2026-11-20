@@ -400,3 +400,46 @@ its own sign-in beside the hub's (two ways in, for a sign-in nobody uses).
 
 Not here: the hub checking membership in the background (a pull request of its own).
 
+## The pages for everybody, and the sign-in's window (akot, 2026-11-19)
+
+Asked for by akot on 2026-11-19 and built the same day, with no design of their own. Recorded
+here because 27, 28 and 30 replace what is written above.
+
+26. **The Discord sign-in runs in a second window**, as the Prices portal's does. `/api/login`
+    stays, says it is waiting, and takes the outcome from the window, which it checks with `/me`
+    before it goes to the dashboard. Where the browser opens no second window the button is the
+    plain link, and the round trip runs in the tab as "The session" has it. "Get API Key" on a
+    dashboard tab runs in a second window too (akot, 2026-11-20): still the form's `POST` of "Found
+    in review of the local sign-in", from the page's origin and with the session, but sent to an
+    empty window the page opens. The window lands on the tab's address with `?issue=<outcome>`,
+    hands the outcome to the tab and shuts; the tab reads the account again. Nothing changes in the
+    backend, and where no window opens the form posts in the tab as before.
+27. **One quick start and one API reference for every API**, at `/api/quick-start/<api>` and
+    `/api/docs/<api>`, a tab per API, open to everybody and with no `noindex`. This replaces
+    `/api/prices-api/docs` and `/api/prices-api/quick-start` in "The Prices portal moves in": those
+    two now send the browser to the Prices tab's address, keeping its `#part`. x402's two pages
+    are behind `VITE_PRODUCTS`, as its tab is (decision 22); its reference renders a copy of
+    stellar-x402's `apps/facilitator/openapi.json`.
+28. **The hub's top bar says "Log in" to everybody**, and gains "Quick start" and "Docs". This
+    replaces "'Dashboard' while signed in" in "The page": the sign-in page sends whoever is signed
+    in on to the dashboard, so the landing page asks the backend nothing.
+29. **One bar on every page of the APIs**: the dashboard's, over the quick start, the reference,
+    and the Prices portal's landing page and privacy policy, with "Log in" for a visitor who isn't
+    signed in. The Prices landing page's own bar (Features, Quick Start, FAQ, Sign in, Get API
+    Key) is drawn only by its old sign-in.
+30. **The cutover's step 3 serves two more addresses.** The explorer serves `/api/quick-start*`
+    and `/api/docs*` from the hub's bundle too, and takes `quick-start` and `docs` out of
+    `PRICES_PORTAL_LEGACY_ROUTES`, in the same deploy as the rest of step 3. Until that deploy it
+    answers every address under the two with a `301` into `/api/prices-api/…`, the tab's address
+    too (`/api/docs/prices` goes to `/api/prices-api/docs/prices`; seen on production,
+    2026-11-20), where the Prices pages have no such route and show their landing page. A browser
+    keeps a `301`, so neither address is opened on production before the switch, and the hub's
+    bundle is not served there without the explorer's change. Links name the tab's address, never
+    the bare `/api/quick-start` or `/api/docs`, for the reason step 3 gives for `?from=prices`.
+31. **Each section of the hub's landing page is a screen of its own** above the design's 720 px
+    breakpoint; the closing panel and phones keep their heights.
+32. **The hub's links to this bundle's own pages follow the bundle's prefix** (`VITE_BASE_PATH`):
+    the Prices portal, the sign-in, the quick start and the reference. A build for another prefix
+    is then the whole app at that prefix. The x402 Facilitator's page and the explorer are other
+    apps, at their own addresses whatever the prefix.
+
