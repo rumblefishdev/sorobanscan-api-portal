@@ -40,6 +40,22 @@ AWS_PROFILE=stellar aws lambda get-account-settings --region eu-central-1 \
 limit with a Service Quotas request for Lambda's "Concurrent executions", or release a reservation
 that is not needed; do not lower this stack's 20 to make room.
 
+A first deploy that fails rolls the whole stack back, the two secrets it generated too: they are
+kept on a delete only once they exist. Before deploying again, look that neither name is still
+taken:
+
+```sh
+for s in session origin-secret; do
+  AWS_PROFILE=stellar aws secretsmanager describe-secret --region eu-central-1 \
+    --secret-id "sorobanscan-hub/production/$s" --query DeletedDate --output text
+done
+```
+
+Both must answer `ResourceNotFoundException`. A date is a secret waiting out its recovery window,
+`None` one still there: either way its name is taken and the deploy would fail with "already
+exists". Such a secret was made by the failed deploy and nothing has read it, so remove it at once
+with `aws secretsmanager delete-secret --force-delete-without-recovery --secret-id <name>`.
+
 The four pull requests of the launch are merged: three in this repo (the pages, the backend's
 guards, the Lambda with its stack and this runbook) and the explorer's `apiHub` setting.
 Nothing is deployed before that.
@@ -145,9 +161,13 @@ In `soroban-block-explorer`, a pull request that adds to `infra/envs/production.
 }
 ```
 
-Merge it, then release the distribution's stack, as that repo's `docs/deployment.md` ("Releases
-and the CI deploy path") says: a tag `production-YYYY.MM.DD-N-Delivery` on `origin/master`
-(`infra/scripts/deploy-scope.sh` shows what a tag will do).
+The pull request goes to `develop`, as every pull request there does, but a tag deploys `master`,
+which takes `develop` only through a pull request of its own (`develop` → `master`). So: merge it
+into `develop`, then open and merge `develop` → `master`, then release the distribution's stack,
+as that repo's `docs/deployment.md` ("Releases and the CI deploy path") says: a tag
+`production-YYYY.MM.DD-N-Delivery` on `origin/master` (`infra/scripts/deploy-scope.sh` shows what
+a tag will do). `develop` → `master` carries whatever else `develop` holds: read its diff before
+merging it, and agree with the explorer's team when it ships.
 
 Only `/api/hub/*` changes: CloudFront sends it to the function, with the header
 `X-Hub-Origin-Secret` and the viewer's address in `X-Hub-Viewer-Ip`. Every page is still the
@@ -172,8 +192,9 @@ function's log group tell which product.
 
 ### 6. The explorer: the pages (the start)
 
-A second pull request in `soroban-block-explorer`: `"pages": true` in the same setting. Merge it
-and release `-Delivery` as in step 4. This is the start: from here `/api/` is the hub's.
+A second pull request in `soroban-block-explorer`: `"pages": true` in the same setting. Merge it,
+take it to `master` and release `-Delivery`, as in step 4. This is the start: from here `/api/` is
+the hub's.
 
 ### 7. The checks
 
@@ -217,7 +238,10 @@ curl -si https://<FunctionUrlHost>/api/hub/me                                   
 ```
 
 The limit: 30 a minute to the three that call Discord, 120 a minute to the rest (`GET me` is not
-counted). The count is kept in each instance's memory, so these counts hold per instance: with
+counted), each in a window of a minute from an address's first counted call. The lines above
+already spent 3 of the 30 (`auth/login`, `auth/callback`, `auth/issue`) and 6 of the 120, so wait
+a minute after them before the loops below, or each loop comes out short by that many. The count
+is kept in each instance's memory, so these counts hold per instance: with
 several instances warm, sequential calls can land on different ones. More `401`s than below, or no
 `429`, means the calls were spread over instances; repeat the loop, or read it as expected.
 `auth/login` only redirects to Discord and asks nothing of it, so it is safe to spend:
@@ -286,9 +310,12 @@ Lines to know (a line never holds a token, a secret or a key):
 
 ## The way back
 
-Revert step 6 (`"pages": false`) and release `-Delivery` as in step 4. The explorer's hub, the old
-Prices portal on its own sign-in and the x402 page behind its password are back at once, from
-files nobody touched. `/api/hub/*` stays on the Lambda, which nothing links to. Keys issued
+Revert step 6 (`"pages": false`), take it to `master` and release `-Delivery`, as in step 4. When
+`develop` holds other changes not yet on `master`, make the revert on a branch from `origin/master`
+merged into `master` (the explorer's own `release/…` branches have gone that way), and the same
+revert into `develop`, so the way back carries nothing else. Once that release is deployed, the
+explorer's hub, the old Prices portal on its own sign-in and the x402 page behind its password are
+back, from files nobody touched. `/api/hub/*` stays on the Lambda, which nothing links to. Keys issued
 through the hub are the products' own and stay.
 
 To take the backend out of the distribution too, remove `apiHub` from `infra/envs/production.json`
@@ -344,11 +371,32 @@ while the running instances still know only the old one, and every call to `/api
    `infra/envs/production.json`, merge, and release `-Delivery`. CloudFront then sends the new
    value. Wait for the deploy to finish and the distribution to say `Deployed`.
 4. Check `curl -s https://sorobanscan.com/api/hub/me` answers `200` and not `400`.
-5. Remove `previous`: put `{"current": "<the new value>"}` again, and restart the function. Read
-   the new value out of the secret as in 1; do not retype it.
+5. Remove `previous`, then restart the function. The new value is read out of the secret, never
+   retyped (step 1's first command would refuse here, since `previous` is set):
 
-**The session's (`session`).** A new value signs every member out. Put a new one
-(`get-random-password` as above, `--password-length 64`, plain text), then restart the function.
+   ```sh
+   CUR=$(AWS_PROFILE=stellar aws secretsmanager get-secret-value --region eu-central-1 \
+     --secret-id sorobanscan-hub/production/origin-secret --query SecretString --output text \
+     | jq -r '.current // empty')
+   [ -n "$CUR" ] && jq -n --arg c "$CUR" '{current: $c}' \
+     | AWS_PROFILE=stellar aws secretsmanager put-secret-value --region eu-central-1 \
+     --secret-id sorobanscan-hub/production/origin-secret \
+     --secret-string file:///dev/stdin
+   unset CUR
+   ```
+
+**The session's (`session`).** A new value signs every member out. Put a new one, then restart the
+function:
+
+```sh
+AWS_PROFILE=stellar aws secretsmanager get-random-password --region eu-central-1 \
+  --password-length 64 --exclude-punctuation --query RandomPassword --output text \
+  | AWS_PROFILE=stellar aws secretsmanager put-secret-value --region eu-central-1 \
+  --secret-id sorobanscan-hub/production/session --secret-string file:///dev/stdin
+```
+
+Keep `--exclude-punctuation`: the function takes the session's secret only as base64, and a value
+with punctuation makes every instance answer `503 sign_in_not_configured` after the restart.
 
 **Discord's (`discord-client-secret`).** Reset it in the Discord portal, put the new value with
 `aws secretsmanager put-secret-value` (as in step 1), restart the function. Until then sign-in
