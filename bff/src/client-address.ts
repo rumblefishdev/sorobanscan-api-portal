@@ -4,29 +4,21 @@ import { isIPv4, isIPv6 } from "node:net";
 const UNKNOWN = "unknown";
 
 /**
- * The key a request is counted by, from CloudFront's `CloudFront-Viewer-Address` header: the
- * client's address and source port, `198.51.100.10:46532`. AWS's guide shows the IPv4 form only,
- * so an IPv6 address is accepted both bracketed (`[2001:db8::1]:443`) and bare
- * (`2001:db8::1:443`), the port being the digits after the last colon.
+ * The key a request is counted by, from the `X-Hub-Viewer-Ip` header. The explorer's CloudFront
+ * function writes it from `event.viewer.ip`, a bare IPv4 or IPv6 address with no port and no
+ * brackets, and overwrites whatever the client sent under that name, so only CloudFront's value
+ * arrives: a client can't pick its own key by sending the header itself.
  *
  * An IPv4 address is its own key. An IPv6 client usually holds a whole /64 or more, so counting by
  * the full address would let one client mint a fresh key per request; the key is the first 56 bits
- * instead. A header that is missing or isn't one address and a port falls into one shared
- * "unknown" key: a stranger is not left uncounted.
+ * instead. A value that is missing or isn't one bare address (a port, brackets, a list, spaces)
+ * falls into one shared "unknown" key: a stranger is not left uncounted.
  */
-export function clientKey(viewerAddress: string | undefined): string {
-  if (!viewerAddress) return UNKNOWN;
-  const colon = viewerAddress.lastIndexOf(":");
-  if (colon < 0) return UNKNOWN;
-  if (!/^\d{1,5}$/.test(viewerAddress.slice(colon + 1))) return UNKNOWN;
-  let host = viewerAddress.slice(0, colon);
-  if (host.startsWith("[")) {
-    if (!host.endsWith("]")) return UNKNOWN;
-    host = host.slice(1, -1);
-  }
-  if (isIPv4(host)) return host;
-  if (!isIPv6(host)) return UNKNOWN;
-  const groups = expandIPv6(host);
+export function clientKey(viewerIp: string | undefined): string {
+  if (!viewerIp) return UNKNOWN;
+  if (isIPv4(viewerIp)) return viewerIp;
+  if (!isIPv6(viewerIp)) return UNKNOWN;
+  const groups = expandIPv6(viewerIp);
   const [g0, g1, g2, g3] = groups ?? [];
   if (g0 === undefined || g1 === undefined || g2 === undefined || g3 === undefined) return UNKNOWN;
   // 3 whole groups (48 bits) and the high byte of the fourth (8 more).
