@@ -1,4 +1,4 @@
-import { ANCHORS, PRICES_API_URL, X402_URL } from "../links";
+import { ANCHORS, PRICES_API_URL, X402_QUICK_START_URL } from "../links";
 
 /**
  * The closing panel. It has no eyebrow and is centred, so its `<h2>` is written here rather than
@@ -16,7 +16,7 @@ export function Closing() {
           <a className="btn btn-primary" href={PRICES_API_URL}>
             Prices API
           </a>
-          <a className="btn btn-primary" href={X402_URL}>
+          <a className="btn btn-primary" href={X402_QUICK_START_URL}>
             x402 Facilitator
           </a>
           <a className="btn btn-ghost" href={`#${ANCHORS.sorobanScanApi}`}>

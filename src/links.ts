@@ -1,10 +1,9 @@
 /**
- * Every address the page links to, in one place. The explorer and the x402 Facilitator's page are
- * other apps on the same site, so their addresses are relative to it and the page works on any
- * host; they are where they are whatever prefix this bundle is built for.
+ * Every address the page links to, in one place. The explorer is another app on the same site, so its
+ * address is relative to it and the page works on any host; it is where it is whatever prefix
+ * this bundle is built for.
  */
 export const EXPLORER_URL = "/";
-export const X402_URL = "/api/x402-facilitator/";
 export const GITHUB_URL = "https://github.com/rumblefishdev/stellar-x402";
 
 /**
@@ -33,6 +32,7 @@ export const LOGIN_URL = `${BASE}login`;
  * would take that detour on every visit.
  */
 export const QUICK_START_URL = `${BASE}quick-start/prices`;
+export const X402_QUICK_START_URL = `${BASE}quick-start/x402`;
 export const DOCS_URL = `${BASE}docs/prices`;
 
 /** The ids of the page's parts that its own links point at, as `#${id}`. */

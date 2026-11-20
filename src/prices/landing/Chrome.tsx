@@ -432,8 +432,8 @@ export function Footer({
         ? [{ label: 'Dashboard', to: DASHBOARD_ROUTE }]
         : []),
     { label: 'Contact', href: RUMBLEFISH_CONTACT },
-    // A plain link: the hub's documentation pages draw this footer too, under
-    // a router whose `/privacy-policy` is not this page.
+    // A plain link: the policy is the hub's page, and these pages' routers
+    // are not the hub's.
     { label: 'Privacy policy', href: PRIVACY_POLICY },
     // The only way to withdraw consent once given, so it sits on every page.
     // `#` + preventDefault keeps it a real, focusable anchor like its

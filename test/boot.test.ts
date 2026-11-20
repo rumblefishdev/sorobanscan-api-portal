@@ -27,6 +27,7 @@ describe("isPricesPath", () => {
     "/api/prices",
     "/api/x402-facilitator/",
     "/api/anything",
+    "/api/privacy-policy",
   ])("boots the hub for %s", (p) => expect(isPricesPath(p, "/api/")).toBe(false));
   it("follows another base", () =>
     expect(isPricesPath("/api/next/prices-api/", "/api/next/")).toBe(true));
@@ -42,6 +43,11 @@ describe("isAccountPath", () => {
     "/api/quick-start/prices",
     "/api/docs",
     "/api/docs/x402",
+    "/api/privacy-policy",
+    "/api/privacy-policy/",
+    "/api/privacy-policy/extra",
+    "/api/login/",
+    "/api/login/extra",
   ])(
     "boots the account pages for %s",
     (p) => expect(isAccountPath(p, "/api/")).toBe(true),
@@ -51,6 +57,7 @@ describe("isAccountPath", () => {
     "/api/dashboardX",
     "/api/quick-startX",
     "/api/docsX",
+    "/api/privacy-policyX",
     "/api/prices-api/quick-start",
     "/api/prices-api/docs",
     "/api/",
@@ -103,6 +110,9 @@ describe("the boot module", () => {
     ["/api/prices-api/dashboard", "Prices"],
     ["/api/login", "the account"],
     ["/api/login?signin=not_member", "the account"],
+    ["/api/privacy-policy/", "the account"],
+    ["/api/login/", "the account"],
+    ["/api/privacy-policyX", "the hub"],
     ["/api/dashboard", "the account"],
     ["/api/dashboard/prices", "the account"],
     ["/api/loginX", "the hub"],

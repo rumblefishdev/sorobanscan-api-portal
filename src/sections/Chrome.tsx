@@ -1,6 +1,6 @@
 import {
   ANCHORS, DOCS_URL, EXPLORER_URL, GITHUB_URL, LOGIN_URL, PRICES_API_URL, QUICK_START_URL,
-  X402_URL,
+  X402_QUICK_START_URL,
 } from "../links";
 
 export function TopBar() {
@@ -44,7 +44,7 @@ export function Footer() {
         <nav aria-label="Footer">
           <a href={EXPLORER_URL}>Soroban Scan</a>
           <a href={PRICES_API_URL}>Prices API</a>
-          <a href={X402_URL}>x402 Facilitator</a>
+          <a href={X402_QUICK_START_URL}>x402 Facilitator</a>
           <a href={GITHUB_URL}>GitHub</a>
         </nav>
       </div>

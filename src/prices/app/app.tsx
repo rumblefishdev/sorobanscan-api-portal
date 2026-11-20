@@ -7,8 +7,6 @@ import Stack from '@mui/material/Stack';
 import CircularProgress from '@mui/material/CircularProgress';
 import Typography from '@mui/material/Typography';
 import {
-  Suspense,
-  lazy,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -34,7 +32,6 @@ import {
   ACCOUNT_NAVBAR_HEIGHT,
   AccountNavbar,
   SignOutFailed,
-  type AccountNavbarPage,
 } from '../../account/AccountNavbar';
 import {
   useSession as useHubSession,
@@ -93,6 +90,7 @@ import {
   API_REFERENCE,
   HUB_DASHBOARD,
   HUB_LOGIN,
+  HUB_PRIVACY_POLICY,
   LOGIN_ANCHOR,
   QUICKSTART,
   RUMBLEFISH_CONTACT,
@@ -3279,7 +3277,7 @@ function RootRoute({
         // OpenAPI Docs and Log in, or the account's own. With this portal's
         // own sign-in (`AccountPages`), its own bar as before.
         accountPages === 'hub' ? (
-          <PageBar gate={gate} current="landing" />
+          <PageBar />
         ) : (
           <Navbar canOfferKey={canOfferKey} />
         )
@@ -3528,11 +3526,9 @@ function DashboardRoute({ gate }: { gate: Gate }) {
 
 /**
  * Who is signed in to the hub, and its Sign out, for the pages under
- * {@link PageBar}: a layout route over the three, so the hub is asked once
- * when the first of them opens and the answer kept while the visitor moves
- * between them. Asked in each page instead, every click on the bar's own
- * links would ask again and blank the bar while it waited. The landing page
- * draws a bar of its own and asks the hub nothing.
+ * {@link PageBar}: a layout route over them, so the hub is asked once
+ * when the first of them opens. With this portal's own sign-in the landing
+ * page draws a bar of its own and asks the hub nothing.
  */
 function HubSessionScope() {
   const session = useHubSession();
@@ -3546,7 +3542,7 @@ type HubScope = {
 };
 
 /**
- * The bar over the landing page and the privacy policy.
+ * The bar over the landing page.
  *
  * Signed in to the hub, it is the hub's bar, the dashboard's own component
  * (`AccountNavbar`): the dashboard's "Quick start" and "OpenAPI Docs" open
@@ -3554,21 +3550,14 @@ type HubScope = {
  * 2026-11-18), Sign out included. Without a hub session (signed out, no
  * sign-in configured, or the hub unable to say) it is still the hub's bar,
  * with "Log in" for the account (akot, 2026-11-19), so every page of the APIs
- * has the one bar; only a session on Prices' old backend gets this portal's
- * signed-in bar, as before.
+ * has the one bar.
  *
  * While the hub is asked, the bar is drawn empty, the wordmark alone: the
  * dashboard draws no bar until it knows, so neither bar's links flash up for
  * the wrong visitor, and the bar keeps its place, so the page under it doesn't
  * move when the answer comes.
  */
-function PageBar({
-  gate,
-  current,
-}: {
-  gate: Gate;
-  current: Extract<AccountNavbarPage, 'landing' | 'privacy-policy'>;
-}) {
+function PageBar() {
   const { session: hub, signOut } = useOutletContext<HubScope>();
 
   if (hub.state === 'loading') return <EmptyBar />;
@@ -3579,7 +3568,7 @@ function PageBar({
           username={hub.username}
           onSignOut={signOut.onSignOut}
           signingOut={signOut.state === 'in_flight'}
-          current={current}
+          current="landing"
         />
         {/* Under the bar whose button it answers, as on the dashboard. */}
         {signOut.state === 'failed' && (
@@ -3591,21 +3580,9 @@ function PageBar({
     );
   }
 
-  const signedIn = gate.open && gate.authenticated;
-  const username = signedIn
-    ? (gate.session as { state: 'ok'; session: PortalSession }).session.username
-    : undefined;
-  return signedIn && current !== 'landing' ? (
-    <DashboardNavbar
-      username={username}
-      onSignOut={gate.onSignOut}
-      current={current}
-    />
-  ) : (
-    // Nobody is signed in to the hub, or the hub can't say: its bar with
-    // "Log in", as on the quick start and the API reference.
-    <AccountNavbar current={current} visitor="signed_out" />
-  );
+  // Nobody is signed in to the hub, or the hub can't say: its bar with
+  // "Log in", as on the quick start and the API reference.
+  return <AccountNavbar current="landing" visitor="signed_out" />;
 }
 
 /**
@@ -3639,55 +3616,6 @@ function EmptyBar() {
         </Stack>
       </Container>
     </Box>
-  );
-}
-
-/**
- * The footer under the pages {@link PageBar} is over: its "Dashboard" follows
- * the bar's, the hub's Prices tab for a visitor signed in to the hub, this
- * portal's dashboard for a session on its old backend, none otherwise.
- */
-function PageFooter({ gate }: { gate: Gate }) {
-  const { session: hub } = useOutletContext<HubScope>();
-  return (
-    <Footer
-      canOfferKey={gate.open && gate.authenticated}
-      hubDashboard={hub.state === 'signed_in'}
-    />
-  );
-}
-
-// The policy's text rides in its own chunk, like the reference: a visitor who
-// never opens it never downloads it.
-const PrivacyPolicy = lazy(() => import('../privacy/PrivacyPolicy'));
-
-/**
- * A lazy page's placeholder, a viewport tall (less the 52 px bar): shorter,
- * and the footer rode up under the spinner and jumped back down when the
- * page arrived (task 0305).
- */
-function PageLoading({ label }: { label: string }) {
-  return (
-    <Stack
-      alignItems="center"
-      sx={{ py: 12, minHeight: 'calc(100dvh - 52px)' }}
-      aria-busy="true"
-    >
-      <CircularProgress size={28} aria-label={label} />
-    </Stack>
-  );
-}
-
-/** The privacy policy (task 0303): the same chrome rule as the reference. */
-function PrivacyPolicyRoute({ gate }: { gate: Gate }) {
-  return (
-    <>
-      <PageBar gate={gate} current="privacy-policy" />
-      <Suspense fallback={<PageLoading label="Loading the privacy policy" />}>
-        <PrivacyPolicy />
-      </Suspense>
-      <PageFooter gate={gate} />
-    </>
   );
 }
 
@@ -3750,8 +3678,8 @@ function useScrollOnNavigate() {
     };
     if (jump()) return;
 
-    // ponytail: a lazy route (`/privacy-policy`) renders its ids a chunk
-    // later, so watch for the target for 5 s; after that a jump would yank a
+    // ponytail: a target may be drawn a moment after the page (a late answer
+    // from the hub), so watch for it for 5 s; after that a jump would yank a
     // reader who has started scrolling.
     const observer = new MutationObserver(() => {
       if (jump()) stop();
@@ -3848,6 +3776,11 @@ export function App({ accountPages = 'hub' }: { accountPages?: AccountPages }) {
             the hub's pages, one for every API, at the Prices tab. */}
         <Route path="/quick-start" element={<ToHub href={QUICKSTART} hash />} />
         <Route path="/docs" element={<ToHub href={API_REFERENCE} hash />} />
+        {/* The policy too, since 2026-11-20: one for every API. */}
+        <Route
+          path="/privacy-policy"
+          element={<ToHub href={HUB_PRIVACY_POLICY} hash />}
+        />
         {/* The pages under `PageBar`. */}
         <Route element={<HubSessionScope />}>
           {accountPages === 'hub' && (
@@ -3856,10 +3789,6 @@ export function App({ accountPages = 'hub' }: { accountPages?: AccountPages }) {
               element={<RootRoute gate={gate} accountPages={accountPages} />}
             />
           )}
-          <Route
-            path="/privacy-policy"
-            element={<PrivacyPolicyRoute gate={gate} />}
-          />
         </Route>
         {/* Anything else is a URL this app never minted. On the shared host
             every extensionless path under `/api/prices-api/` boots this bundle

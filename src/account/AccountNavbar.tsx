@@ -17,8 +17,8 @@ import { color, font, radius } from "../prices/theme/tokens";
 import type { Product } from "./products";
 
 /**
- * The pages the bar is drawn over: this tree's dashboard, quick start and API reference, and the
- * Prices portal's landing page and privacy policy.
+ * The pages the bar is drawn over: this tree's dashboard, quick start, API reference and privacy
+ * policy, and the Prices portal's landing page.
  */
 export type AccountNavbarPage =
   | "dashboard"
@@ -28,7 +28,12 @@ export type AccountNavbarPage =
   | "privacy-policy";
 
 /** The pages among them that are this tree's own, which the bar reaches by router links. */
-const OWN_PAGES: readonly AccountNavbarPage[] = ["dashboard", "quick-start", "docs"];
+const OWN_PAGES: readonly AccountNavbarPage[] = [
+  "dashboard",
+  "quick-start",
+  "docs",
+  "privacy-policy",
+];
 
 /**
  * The bar's height, less its border, at each width: one 52 px row from `sm`; at `xs` two, the
@@ -48,8 +53,9 @@ export const ACCOUNT_NAVBAR_HEIGHT = { xs: 24 + 16 + 44, sm: 52 };
  * The quick start and the API reference are pages of this tree, one for every API (akot,
  * 2026-11-19; `docs/DocsPage.tsx`), and open to a visitor who isn't signed in: the bar is over
  * them for everybody, with "Log in" where the account and Sign out would be (`visitor`). The
- * Prices portal's landing page and privacy policy draw the bar too (akot, 2026-11-19; `PageBar`
- * in `src/prices/app/app.tsx`), so every page of the APIs has the one bar. A link is a route of
+ * Prices portal's landing page draws the bar too (akot, 2026-11-19; `PageBar` in
+ * `src/prices/app/app.tsx`); the privacy policy is a page of this tree (2026-11-20), so every
+ * page of the APIs has the one bar. A link is a route of
  * the tree the bar is drawn in and a plain link from the other tree: under the other tree's
  * basename a router link would name a page of that one.
  */
@@ -67,8 +73,8 @@ export function AccountNavbar({
   /** A sign-out is in flight: the button is shut, so a second press sends no second `POST`. */
   signingOut?: boolean;
   /**
-   * The page the bar is over, whose link is underlined. The Prices portal's landing page and
-   * privacy policy are under the bar and not in it, so nothing is underlined there.
+   * The page the bar is over, whose link is underlined. The privacy policy and the Prices
+   * portal's landing page are under the bar and not in it, so nothing is underlined there.
    */
   current?: AccountNavbarPage;
   /** The API the page under the bar is about: the bar's links then open that API's tab. */

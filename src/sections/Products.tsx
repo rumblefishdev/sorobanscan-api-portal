@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { SectionHead } from "../components/SectionHead";
-import { ANCHORS, GITHUB_URL, PRICES_API_URL, X402_URL } from "../links";
+import { ANCHORS, GITHUB_URL, PRICES_API_URL, X402_QUICK_START_URL } from "../links";
 
 /** One of the design's line icons, drawn at 32px in the accent (the colour is the CSS's). */
 function LineIcon({ children }: { children: ReactNode }) {
@@ -76,7 +76,7 @@ const PRODUCTS: readonly Product[] = [
     ],
     endpoint: "api.sorobanscan.com/x402",
     links: [
-      { label: "Explore x402 Facilitator", href: X402_URL, kind: "primary" },
+      { label: "Explore x402 Facilitator", href: X402_QUICK_START_URL, kind: "primary" },
       { label: "GitHub", href: GITHUB_URL, kind: "ghost" },
     ],
   },
