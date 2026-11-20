@@ -619,15 +619,39 @@ describe("the x402 tab's Get API Key window", () => {
     expect(button.disabled).toBe(false);
   });
 
-  // The window's two halves outlived their 10 minutes, or its cookie was gone: the backend can no
-  // longer tell it was an issue and lands it on the sign-in page with a refusal.
-  it("says a failed issue when the window ended on the sign-in page's refusal", async () => {
+  // The window ended on the sign-in page: the backend could not tell the round trip was an issue
+  // (its two halves outlived their 10 minutes, or its cookie was gone) and refused it as a
+  // sign-in. The reason is said as the issue's own, never flattened to "we could not create your
+  // key": an account that has not accepted the rules is told so (akot, 2026-11-20).
+  it.each([
+    ["pending_rules", "issue-pending-rules"],
+    ["not_member", "issue-not-member"],
+    ["unknown", "issue-unknown"],
+    ["cancelled", "issue-cancelled"],
+    ["failed", "issue-failed"],
+    // Not a reason the sign-in page has: no key was issued, and that is all that is known.
+    ["issued", "issue-failed"],
+    ["bogus", "issue-failed"],
+  ])("says ?signin=%s from the window as %s", async (reason, testId) => {
     stubHub({ account: () => answer(200, NO_KEY) });
     opens(fakeWindow());
     renderAt("/api/dashboard/x402");
     fireEvent.submit(await getKeyForm());
-    await windowLands("?signin=failed");
-    expect(await screen.findByTestId("issue-failed")).toBeTruthy();
+    await windowLands(`?signin=${reason}`);
+    expect(await screen.findByTestId(testId)).toBeTruthy();
+    expect(document.querySelectorAll('[data-testid^="issue-"]')).toHaveLength(1);
+  });
+
+  it("says the rules are not accepted yet, in the banner's own words", async () => {
+    stubHub({ account: () => answer(200, NO_KEY) });
+    opens(fakeWindow());
+    renderAt("/api/dashboard/x402");
+    fireEvent.submit(await getKeyForm());
+    await windowLands("?issue=pending_rules");
+    expect((await screen.findByTestId("issue-pending-rules")).textContent).toBe(
+      "Your Discord account is on the Stellar Developers Discord, but you have not accepted the server's rules yet. Accept them on Discord, then try again.",
+    );
+    expect(screen.queryByTestId("issue-failed")).toBeNull();
   });
 
   it("has the window's outcome stand in for the one the address came with", async () => {
