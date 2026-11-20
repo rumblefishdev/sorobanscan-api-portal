@@ -110,6 +110,13 @@ const locationOf = (response: Response) => response.headers.get("location") ?? "
 const toDiscord = (response: Response) =>
   response.status === 303 && locationOf(response).startsWith(DISCORD);
 
+/**
+ * A dashboard read, which spends the 120: the Prices tab's account. With no session it answers
+ * 401 `not_signed_in`, which says it passed the limit and reached its route.
+ */
+const ACCOUNT = "/api/hub/prices/account";
+const SIGNED_OUT_READ = 401;
+
 async function expectNotThroughTheSite(response: Response, what: string) {
   expect(response.status, what).toBe(400);
   expect(await response.json(), what).toEqual({ error: "not_through_the_site" });
@@ -200,11 +207,13 @@ describe("only through CloudFront", () => {
   // away from those that did.
   it("doesn't count a refused request", async () => {
     const hub = startHub({ originSecret: ORIGIN_SECRET });
-    for (let i = 0; i < 200; i++) {
-      const path = i % 2 === 0 ? "/api/hub/me" : "/api/hub/auth/login";
+    // 125 to each count, over both limits had they been counted.
+    for (let i = 0; i < 250; i++) {
+      const path = i % 2 === 0 ? ACCOUNT : "/api/hub/auth/login";
       expect((await hub.send(path, { secret: null })).status).toBe(400);
     }
     expect((await hub.send("/api/hub/me")).status).toBe(200);
+    expect((await hub.send(ACCOUNT)).status).toBe(SIGNED_OUT_READ);
     expect(toDiscord(await hub.send("/api/hub/auth/login"))).toBe(true);
   });
 
@@ -282,33 +291,65 @@ describe("the request limit", () => {
     },
   );
 
-  // Not a page a browser opens: its refusal is the JSON a `fetch` reads.
-  it("answers a sign-out over the sign-in routes' limit 429 rate_limited", async () => {
+  // It calls nobody, and the sign-in page asks it every 1.5 s while a sign-in window is open:
+  // counted, a few sign-ins behind one address would spend the dashboard's 120, and a sign-in that
+  // worked would read as failed.
+  it("never counts GET me, which leaves both limits whole", async () => {
     const hub = startHub();
-    for (let i = 0; i < 30; i++) await hub.send("/api/hub/auth/login");
-    await expectRateLimited(await hub.send("/api/hub/auth/logout", { method: "POST" }));
+    for (let i = 0; i < 500; i++) {
+      expect((await hub.send("/api/hub/me")).status, `me ${i + 1}`).toBe(200);
+    }
+    for (let i = 0; i < 30; i++) {
+      expect(toDiscord(await hub.send("/api/hub/auth/login")), `sign-in ${i + 1}`).toBe(true);
+    }
+    expect(locationOf(await hub.send("/api/hub/auth/login"))).toBe(BUSY);
+    for (let i = 0; i < 120; i++) {
+      expect((await hub.send(ACCOUNT)).status, `read ${i + 1}`).toBe(SIGNED_OUT_READ);
+    }
+    await expectRateLimited(await hub.send(ACCOUNT));
+    // Both spent, and it still answers.
+    const me = await hub.send("/api/hub/me");
+    expect(me.status).toBe(200);
+    expect(await me.json()).toEqual({ authenticated: false });
+  });
+
+  // It calls nobody: one of the 120, not of the three that call Discord. Not a page a browser
+  // opens, so over the limit its refusal is the JSON a `fetch` reads.
+  it("counts a sign-out with the other requests, not the sign-ins", async () => {
+    const hub = startHub();
+    for (let i = 0; i < 31; i++) await hub.send("/api/hub/auth/login");
+    expect((await hub.send("/api/hub/auth/logout", { method: "POST" })).status).toBe(204);
+
+    const other = startHub();
+    for (let i = 0; i < 119; i++) await other.send(ACCOUNT);
+    expect((await other.send("/api/hub/auth/logout", { method: "POST" })).status).toBe(204);
+    await expectRateLimited(await other.send("/api/hub/auth/logout", { method: "POST" }));
+    // The sign-ins' 30 is untouched.
+    expect(toDiscord(await other.send("/api/hub/auth/login"))).toBe(true);
   });
 
   it("answers the 121st other request from one address 429, with Retry-After", async () => {
     const hub = startHub();
     for (let i = 0; i < 120; i++) {
-      expect((await hub.send("/api/hub/me")).status, `request ${i + 1}`).toBe(200);
+      expect((await hub.send(ACCOUNT)).status, `request ${i + 1}`).toBe(SIGNED_OUT_READ);
     }
-    await expectRateLimited(await hub.send("/api/hub/me"), "me");
-    await expectRateLimited(await hub.send("/api/hub/prices/account"), "account");
+    await expectRateLimited(await hub.send(ACCOUNT), "account");
     await expectRateLimited(
       await hub.send("/api/hub/prices/key/reveal", { method: "POST" }),
       "reveal",
     );
+    await expectRateLimited(await hub.send("/api/hub/nothing"), "an unknown route");
+    // A route under `auth/` that doesn't call Discord is one of these too.
+    await expectRateLimited(await hub.send("/api/hub/auth/login", { method: "POST" }), "POST login");
     // Another address has its own count.
-    expect((await hub.send("/api/hub/me", { ip: OTHER_ADDRESS })).status).toBe(200);
+    expect((await hub.send(ACCOUNT, { ip: OTHER_ADDRESS })).status).toBe(SIGNED_OUT_READ);
 
     // What is left of the minute, in whole seconds.
     hub.advance(15_500);
-    const later = await hub.send("/api/hub/me");
+    const later = await hub.send(ACCOUNT);
     expect(later.headers.get("retry-after")).toBe("45");
     hub.advance(44_500);
-    expect((await hub.send("/api/hub/me")).status).toBe(200);
+    expect((await hub.send(ACCOUNT)).status).toBe(SIGNED_OUT_READ);
   });
 
   it("counts a POST the Origin check refuses", async () => {
@@ -330,14 +371,18 @@ describe("the request limit", () => {
   it("counts two IPv6 addresses of one /56 together", async () => {
     const hub = startHub();
     for (let i = 0; i < 60; i++) {
-      expect((await hub.send("/api/hub/me", { ip: "2001:db8:abcd:1200::1" })).status).toBe(200);
+      expect((await hub.send(ACCOUNT, { ip: "2001:db8:abcd:1200::1" })).status).toBe(
+        SIGNED_OUT_READ,
+      );
       expect(
-        (await hub.send("/api/hub/me", { ip: "2001:db8:abcd:12ff:ffff:ffff:ffff:fffe" })).status,
-      ).toBe(200);
+        (await hub.send(ACCOUNT, { ip: "2001:db8:abcd:12ff:ffff:ffff:ffff:fffe" })).status,
+      ).toBe(SIGNED_OUT_READ);
     }
-    await expectRateLimited(await hub.send("/api/hub/me", { ip: "2001:db8:abcd:1234::9" }));
+    await expectRateLimited(await hub.send(ACCOUNT, { ip: "2001:db8:abcd:1234::9" }));
     // The next /56 is another client.
-    expect((await hub.send("/api/hub/me", { ip: "2001:db8:abcd:1300::1" })).status).toBe(200);
+    expect((await hub.send(ACCOUNT, { ip: "2001:db8:abcd:1300::1" })).status).toBe(
+      SIGNED_OUT_READ,
+    );
   });
 
   // Many people behind one address spend the sign-in routes' limit: the dashboard keeps working.
@@ -345,25 +390,26 @@ describe("the request limit", () => {
     const signingIn = startHub();
     for (let i = 0; i < 31; i++) await signingIn.send("/api/hub/auth/login");
     expect(locationOf(await signingIn.send("/api/hub/auth/login"))).toBe(BUSY);
+    expect((await signingIn.send(ACCOUNT)).status).toBe(SIGNED_OUT_READ);
     const me = await signingIn.send("/api/hub/me");
     expect(me.status).toBe(200);
     expect(await me.json()).toEqual({ authenticated: false });
 
     const reading = startHub();
-    for (let i = 0; i < 121; i++) await reading.send("/api/hub/me");
-    await expectRateLimited(await reading.send("/api/hub/me"));
+    for (let i = 0; i < 121; i++) await reading.send(ACCOUNT);
+    await expectRateLimited(await reading.send(ACCOUNT));
     expect(toDiscord(await reading.send("/api/hub/auth/login"))).toBe(true);
   });
 
   it("counts every request with no viewer address, or one that isn't one, together", async () => {
     const hub = startHub();
     for (let i = 0; i < 60; i++) {
-      expect((await hub.send("/api/hub/me", { ip: null })).status).toBe(200);
-      expect((await hub.send("/api/hub/me", { ip: `${ADDRESS}:443` })).status).toBe(200);
+      expect((await hub.send(ACCOUNT, { ip: null })).status).toBe(SIGNED_OUT_READ);
+      expect((await hub.send(ACCOUNT, { ip: `${ADDRESS}:443` })).status).toBe(SIGNED_OUT_READ);
     }
-    await expectRateLimited(await hub.send("/api/hub/me", { ip: null }));
-    await expectRateLimited(await hub.send("/api/hub/me", { ip: "not an address" }));
-    expect((await hub.send("/api/hub/me", { ip: ADDRESS })).status).toBe(200);
+    await expectRateLimited(await hub.send(ACCOUNT, { ip: null }));
+    await expectRateLimited(await hub.send(ACCOUNT, { ip: "not an address" }));
+    expect((await hub.send(ACCOUNT, { ip: ADDRESS })).status).toBe(SIGNED_OUT_READ);
   });
 
   it("counts only requests that passed the secret, with it set", async () => {
