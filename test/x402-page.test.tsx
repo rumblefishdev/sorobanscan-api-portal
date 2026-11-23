@@ -89,6 +89,11 @@ it("draws Get API Key and View documentation with the arrow of the Prices API po
     ...screen.getAllByRole("link", { name: "View documentation" }),
   ];
   expect(screen.getAllByRole("link", { name: "View documentation" }).length).toBeGreaterThan(0);
+  // The API reference, as the Prices API portal's "View documentation" opens its own: the
+  // in-page quick start is the top bar's "Quickstart".
+  for (const docs of screen.getAllByRole("link", { name: "View documentation" })) {
+    expect(docs.getAttribute("href")).toBe("/api/docs/x402");
+  }
   for (const call of calls) {
     const badge = call.querySelector(".arrow-badge");
     expect(badge?.getAttribute("aria-hidden")).toBe("true");

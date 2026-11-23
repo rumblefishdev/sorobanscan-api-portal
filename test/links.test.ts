@@ -22,6 +22,7 @@ describe("the hub's links", () => {
     expect(links.QUICK_START_URL).toBe("/api/quick-start/prices");
     expect(links.X402_URL).toBe("/api/x402-facilitator/");
     expect(links.DOCS_URL).toBe("/api/docs/prices");
+    expect(links.X402_DOCS_URL).toBe("/api/docs/x402");
   });
 
   // A build for another prefix is the whole app at that prefix (`VITE_BASE_PATH`). A link that
@@ -35,6 +36,7 @@ describe("the hub's links", () => {
     expect(links.QUICK_START_URL).toBe("/api/next/quick-start/prices");
     expect(links.X402_URL).toBe("/api/next/x402-facilitator/");
     expect(links.DOCS_URL).toBe("/api/next/docs/prices");
+    expect(links.X402_DOCS_URL).toBe("/api/next/docs/x402");
   });
 
   it("leave the other apps of the site where they are, whatever the prefix", async () => {

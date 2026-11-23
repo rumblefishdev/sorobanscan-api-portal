@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { X402_LOGIN_URL } from "../../links";
+import { X402_DOCS_URL, X402_LOGIN_URL } from "../../links";
 
 /** A section's badge, its heading and, when it has one, the paragraph under it. */
 export function SectionHead(props: {
@@ -56,7 +56,7 @@ export function LogInLink() {
 
 export function DocsLink() {
   return (
-    <a className="btn btn-dark btn-arrow" href="#quickstart">
+    <a className="btn btn-dark btn-arrow" href={X402_DOCS_URL}>
       View documentation
       <ArrowBadge />
     </a>

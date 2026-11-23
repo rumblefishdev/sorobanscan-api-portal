@@ -18,7 +18,7 @@ function BazaarSearch() {
           Search our Bazaar <Soon />
         </h2>
         <p>
-          Describe what you need in plain words. Results are ranked by the volume of successful
+          Describe what you need in plain words. Results will be ranked by the volume of successful
           purchases.
         </p>
       </div>
