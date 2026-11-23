@@ -3,7 +3,8 @@
 The hub of Soroban Scan's APIs, built for `https://sorobanscan.com/api/`: one page that lists
 the Prices API, the x402 Facilitator and the Soroban Scan API that is coming, and sends each
 reader to the product's own page. The Prices API's portal is here too, at `/api/prices-api/`,
-moved in from stellar-prices-api with its own Discord sign-in and dashboard. Later this app also
+moved in from stellar-prices-api with its own Discord sign-in and dashboard, and so is the x402
+Facilitator's page, at `/api/x402-facilitator/`, moved in from stellar-x402. Later this app also
 holds the shared sign-in and dashboard (`/api/login`, `/api/dashboard`), which replace the Prices
 portal's own.
 
@@ -15,7 +16,8 @@ bucket `production-soroban-explorer-api-spa`, under `api/`, and `/api/hub/*` fro
 Lambda behind a function URL that only the distribution reaches (the runbook has the order, the
 checks, the way back and how each secret is changed). The Prices portal's old files stay in the
 bucket, so the way back shows it working. The x402 Facilitator's page, `/api/x402-facilitator/`,
-is not served: the address answers `302` to `/api/`. Until the start the hub at
+is served from the bundle once the explorer's list of the hub's pages names it (the runbook,
+step 3); until then the address answers `302` to `/api/`. Until the start the hub at
 `sorobanscan.com/api/` is the explorer's own, and the Prices portal at `/api/prices-api/` is the
 copy in stellar-prices-api's `web/portal`.
 
@@ -33,7 +35,8 @@ Node 22.13 or later, and pnpm 11 (Corepack takes the version from `package.json`
 
 ```sh
 pnpm install
-pnpm dev        # the hub at /api/, the Prices portal at /api/prices-api/, the backend at /api/hub/
+pnpm dev        # the hub at /api/, the Prices portal at /api/prices-api/, the x402 page at
+                # /api/x402-facilitator/, the backend at /api/hub/
 pnpm test       # the page's and the backend's tests, and builds that check the page's files
 pnpm typecheck  # the hub, the Prices portal with its own options, then the backend
 VITE_PRODUCTS=prices,x402 pnpm build   # the bundle in dist/, as production's has it
@@ -51,7 +54,8 @@ The bundle is built for one prefix, `/api/` unless `VITE_BASE_PATH` says another
 file, which the environment overrides). Vite's `base` and the router's `basename` both follow
 it, so every file the page asks for is under the prefix, and the Prices portal is at
 `prices-api/` under it. The hub's links to the bundle's own pages follow it too (`src/links.ts`:
-the Prices portal, the sign-in, the quick starts and the reference); its link to the
+the Prices portal, the x402 page, the sign-in, the quick start and the reference), and so do the
+x402 page's; its link to the
 explorer doesn't, since that is another app at its own address. The hub links to no other app's
 page under `/api/`.
 The value must start and end with `/`, and start with only one
@@ -80,7 +84,8 @@ is `src/prices/X`, with Prices' names, code style and comments. `src/boot.js` pi
 the address: `/api/prices-api` and everything under it boots the Prices portal; `/api/login`,
 `/api/privacy-policy`, `/api/dashboard`, `/api/quick-start`, `/api/docs` and everything under each
 of them the account pages: the sign-in, the privacy policy, the dashboard and the two documentation
-pages (`src/account/`, below); every other address the hub. Each tree brings its own styles, fonts and
+pages (`src/account/`, below); `/api/x402-facilitator` and everything under it the x402 page
+(`src/x402/`, below); every other address the hub. Each tree brings its own styles, fonts and
 router, so none's reach another. `tsconfig.prices.json` checks `src/prices` with Prices' own
 compiler options, and `src/account` with them, since it is built from Prices' theme and
 components; the hub's `tsconfig.json` leaves both out, and no hub TypeScript file imports from
@@ -372,6 +377,17 @@ came back with, is said once in Prices' words, and `?issue=` is taken off the ad
 
 `VITE_PRODUCTS`, a build setting, is the comma list of APIs whose tab is open (`prices` unless it
 names others, `prices,x402` once x402 opens); the other tabs show "Coming soon" and don't open.
+
+## The x402 Facilitator's page
+
+`/api/x402-facilitator/` (`src/x402/`) is the x402 Facilitator's landing page, moved in from
+stellar-x402's `apps/portal-web` as its PR #212 drew it from akot's design: one page with no
+router, so any address under it shows the page, with its own stylesheet and the hub's three
+fonts. Every "Get API Key" and its "Log in" go to the hub's sign-in, `/api/login?from=x402`; its
+other links follow the prefix as the hub's do. What the design shows that the facilitator doesn't
+do yet (mainnet, the Bazaar's ranking, plain-language search, `/discovery/search`, the MCP server,
+the quota's use) keeps its place with a "Soon" tag (akot, 2026-11-23); the rest says what
+production does, on testnet, at `https://x402-facilitator.sorobanscan.com`.
 
 ## The quick start and the API reference
 
