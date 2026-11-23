@@ -47,12 +47,13 @@ const hostsNamed = (content: string) =>
   [...new Set([...content.matchAll(/\/\/([\w-]+(?:\.[\w-]+)+)/g)].map((m) => m[1]))].sort();
 const isNoindex = (page: string) => page.includes('<meta name="robots" content="noindex"');
 /**
- * The page floor both trees paint: the hub's `--bg` and the Prices portal's
+ * The page floor every tree paints: the hub's `--bg`, the x402 page's and the Prices portal's
  * `color.surface.background`, read from their sources as text (importing the Prices tokens would
  * bring `src/prices` into the hub's type check).
  */
 const sourceText = (path: string) => readFileSync(join(root, path), "utf8");
 const hubFloor = sourceText("src/styles.css").match(/--bg:\s*(#[0-9a-f]+)/i)?.[1];
+const x402Floor = sourceText("src/x402/styles.css").match(/--bg:\s*(#[0-9a-f]+)/i)?.[1];
 const pricesFloor = sourceText("src/prices/theme/tokens.ts").match(
   /surface:\s*\{[^}]*?\bbackground:\s*'(#[0-9a-f]+)'/i,
 )?.[1];
@@ -108,11 +109,12 @@ describe.each(["/api/", "/api/next/"])("the page built for %s", (base) => {
     expect(page).toContain("GTM-TBF2GP5S");
   });
 
-  // Neither tree's stylesheet is in the page: the boot chunk adds one after it has run, and until
+  // No tree's stylesheet is in the page: the boot chunk adds one after it has run, and until
   // then a cold load would show the browser's white canvas.
-  it("paints both trees' floor before any script runs", () => {
+  it("paints every tree's floor before any script runs", () => {
     expect(hubFloor).toBeDefined();
     expect(pricesFloor).toBe(hubFloor);
+    expect(x402Floor).toBe(hubFloor);
     const style = page.match(/<style>\s*html\s*\{\s*background:\s*(#[0-9a-f]+);?\s*\}\s*<\/style>/i);
     expect(style?.[1]).toBe(hubFloor);
     expect(style?.index).toBeLessThan(page.indexOf("<script"));

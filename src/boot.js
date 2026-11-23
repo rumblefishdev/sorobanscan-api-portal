@@ -1,7 +1,8 @@
 // The page's one entry: it picks the tree for the address and imports that tree's entry, which
 // brings its own styles, fonts and router, so no tree's reach another. Plain JavaScript,
 // with its type in `boot.d.ts`, so the hub's type check doesn't follow it into `src/prices` or
-// `src/account`, which `tsconfig.prices.json` checks with Prices' own options.
+// `src/account`, which `tsconfig.prices.json` checks with Prices' own options. The fourth tree,
+// `src/x402`, is the hub's own TypeScript.
 import { bridgeOAuthPopup } from "./prices/landing/oauthPopup.ts";
 
 /**
@@ -11,6 +12,16 @@ import { bridgeOAuthPopup } from "./prices/landing/oauthPopup.ts";
 export function isPricesPath(pathname, base) {
   const prices = `${base}prices-api`;
   return pathname === prices || pathname.startsWith(`${prices}/`);
+}
+
+/**
+ * Whether `pathname` is the x402 Facilitator's landing page: `${base}x402-facilitator` or anything
+ * under it, and not a hub address that only starts with the same letters, such as
+ * `${base}x402-facilitatorX`. The page has no routes, so an address under it shows the page too.
+ */
+export function isX402Path(pathname, base) {
+  const x402 = `${base}x402-facilitator`;
+  return pathname === x402 || pathname.startsWith(`${x402}/`);
 }
 
 /**
@@ -36,5 +47,6 @@ if (!bridgeOAuthPopup()) {
   const base = import.meta.env.BASE_URL;
   if (isPricesPath(location.pathname, base)) import("./prices/main.tsx");
   else if (isAccountPath(location.pathname, base)) import("./account/main.tsx");
+  else if (isX402Path(location.pathname, base)) import("./x402/main.tsx");
   else import("./hub/main.tsx");
 }

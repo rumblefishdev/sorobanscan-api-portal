@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { isAccountPath, isPricesPath } from "../src/boot.js";
+import { isAccountPath, isPricesPath, isX402Path } from "../src/boot.js";
 
 // Each tree's entry renders at import. Here they stand in with a word in `#root`, so a test sees
 // which tree the address booted, and that the sign-in popup booted none. `vi.mock` covers the
@@ -12,6 +12,7 @@ const standIn = (tree: string) => () => {
 vi.mock("../src/hub/main.tsx", () => ({}));
 vi.mock("../src/prices/main.tsx", () => ({}));
 vi.mock("../src/account/main.tsx", () => ({}));
+vi.mock("../src/x402/main.tsx", () => ({}));
 
 describe("isPricesPath", () => {
   it.each([
@@ -28,7 +29,7 @@ describe("isPricesPath", () => {
     "/api/x402-facilitator/",
     "/api/anything",
     "/api/privacy-policy",
-  ])("boots the hub for %s", (p) => expect(isPricesPath(p, "/api/")).toBe(false));
+  ])("leaves %s to another tree", (p) => expect(isPricesPath(p, "/api/")).toBe(false));
   it("follows another base", () =>
     expect(isPricesPath("/api/next/prices-api/", "/api/next/")).toBe(true));
 });
@@ -73,6 +74,31 @@ describe("isAccountPath", () => {
   });
 });
 
+describe("isX402Path", () => {
+  it.each([
+    "/api/x402-facilitator",
+    "/api/x402-facilitator/",
+    "/api/x402-facilitator/anything",
+    "/api/x402-facilitator/login",
+  ])("boots the x402 page for %s", (p) => {
+    expect(isX402Path(p, "/api/")).toBe(true);
+    expect(isPricesPath(p, "/api/")).toBe(false);
+    expect(isAccountPath(p, "/api/")).toBe(false);
+  });
+  it.each([
+    "/api/x402-facilitatorX",
+    "/api/x402",
+    "/api/quick-start/x402",
+    "/api/dashboard/x402",
+    "/api/",
+    "/x402-facilitator/",
+  ])("leaves %s to another tree", (p) => expect(isX402Path(p, "/api/")).toBe(false));
+  it("follows another base", () => {
+    expect(isX402Path("/api/next/x402-facilitator/", "/api/next/")).toBe(true);
+    expect(isX402Path("/api/x402-facilitator/", "/api/next/")).toBe(false);
+  });
+});
+
 describe("the boot module", () => {
   const root = () => document.getElementById("root");
   const postMessage = vi.fn();
@@ -89,6 +115,7 @@ describe("the boot module", () => {
     vi.doMock("../src/hub/main.tsx", standIn("the hub"));
     vi.doMock("../src/prices/main.tsx", standIn("Prices"));
     vi.doMock("../src/account/main.tsx", standIn("the account"));
+    vi.doMock("../src/x402/main.tsx", standIn("x402"));
     postMessage.mockReset();
     document.body.innerHTML = '<div id="root"></div>';
     vi.spyOn(window, "close").mockImplementation(() => {});
@@ -117,6 +144,10 @@ describe("the boot module", () => {
     ["/api/dashboard/prices", "the account"],
     ["/api/loginX", "the hub"],
     ["/api/prices-api/login", "Prices"],
+    ["/api/x402-facilitator", "x402"],
+    ["/api/x402-facilitator/", "x402"],
+    ["/api/x402-facilitator/anything", "x402"],
+    ["/api/x402-facilitatorX", "the hub"],
   ])("at %s boots %s", async (path, tree) => {
     await boot(path);
     expect(root()?.textContent).toBe(tree);
