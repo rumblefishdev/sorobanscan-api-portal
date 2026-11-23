@@ -648,6 +648,22 @@ code,
   padding: 2px 8px;
   vertical-align: middle;
 }
+/* "Soon": the pill above in the accent, beside what is not live yet (akot, 2026-11-23). It keeps
+   its own size and weight in a heading, a table cell or a tile. */
+.soon {
+  display: inline-block;
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+  letter-spacing: normal;
+  white-space: nowrap;
+  color: var(--accent);
+  border: 1px solid var(--accent-line);
+  border-radius: 9999px;
+  padding: 1px 8px;
+  vertical-align: middle;
+}
 
 /* Code */
 .code-row {
@@ -765,6 +781,10 @@ code,
 }
 .tile .state.live {
   color: var(--ok);
+}
+/* In a tile's column the tag keeps its own width. */
+.tile .soon {
+  align-self: flex-start;
 }
 
 /* The key card */

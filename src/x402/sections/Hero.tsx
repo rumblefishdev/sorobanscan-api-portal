@@ -1,15 +1,22 @@
 import { useState } from "react";
 import { DocsLink, GetKeyLink } from "../components/SectionHead";
+import { Soon } from "../components/Soon";
 
 const EXAMPLES = ["Token prices", "Weather forecast", "Web search"];
 
-/** The search box. It only holds the words: the facilitator has no search route to send them to. */
+/**
+ * The search box. It only holds the words: the facilitator has no search route to send them to
+ * yet (`/discovery/search` answers 404), so the card is marked Soon and says where the listings
+ * are today.
+ */
 function BazaarSearch() {
   const [query, setQuery] = useState("");
   return (
     <div className="card search">
       <div className="search-head">
-        <h2>Search our Bazaar</h2>
+        <h2>
+          Search our Bazaar <Soon />
+        </h2>
         <p>
           Describe what you need in plain words. Results are ranked by the volume of successful
           purchases.
@@ -39,8 +46,8 @@ function BazaarSearch() {
         ))}
       </div>
       <p className="search-foot">
-        Agents run the same search through <code>/discovery/search</code> or our MCP server. No key
-        needed to search.
+        Plain-language search through <code>/discovery/search</code> and our MCP server is coming.
+        Today agents browse every listing at <code>/discovery/resources</code>, no key needed.
       </p>
     </div>
   );
@@ -51,12 +58,12 @@ export function Hero() {
     <div className="first-screen">
       <section aria-labelledby="hero-title" className="wrap hero">
         <div className="col hero-copy">
-          <p className="status">Live on Stellar Mainnet and Testnet</p>
+          <p className="status">Live on Stellar Testnet · Mainnet soon</p>
           <h1 id="hero-title">Get your API found by AI agents</h1>
           <p className="hero-lead">
             The x402 facilitator for Stellar with a built-in Bazaar. Every API paid through us is
-            listed, ranked by the volume of successful purchases and searchable in plain language,
-            so AI agents can discover your services autonomously and pay for them.
+            listed, so AI agents can discover your services autonomously and pay for them. Ranking
+            by the volume of successful purchases and search in plain language are coming soon.
           </p>
           <p className="hero-sub">
             Plus everything a facilitator should do: verify, settle, sponsored fees, any SEP-41

@@ -1,4 +1,5 @@
 import { GetKeyLink, SectionHead } from "../components/SectionHead";
+import { Soon } from "../components/Soon";
 
 const STEPS = [
   {
@@ -7,11 +8,13 @@ const STEPS = [
   },
   {
     title: "Ranked by successful purchases",
-    text: "Ranking follows the volume of successful purchases: the more your API sells, the higher it ranks. Only settled payments count, so a listing can’t be faked.",
+    soon: true,
+    text: "Ranking will follow the volume of successful purchases: the more your API sells, the higher it ranks. Only settled payments count, so a listing can’t be faked.",
   },
   {
     title: "Found in plain language",
-    text: "Agents describe what they need in their own words, through /discovery/search or our MCP server. The Bazaar returns the best-matching paid APIs, ranked and ready to pay for in the same loop.",
+    soon: true,
+    text: "Agents will describe what they need in their own words, through /discovery/search or our MCP server, and get the best-matching paid APIs, ready to pay for in the same loop. Today they browse every listing at /discovery/resources.",
   },
 ];
 
@@ -34,7 +37,15 @@ export function Bazaar() {
           <li key={step.title} className="card numbered" style={{ flexDirection: "row" }}>
             <span>{String(i + 1).padStart(2, "0")}</span>
             <div>
-              <h3>{step.title}</h3>
+              <h3>
+                {step.title}
+                {step.soon && (
+                  <>
+                    {" "}
+                    <Soon />
+                  </>
+                )}
+              </h3>
               <p>{step.text}</p>
             </div>
           </li>
@@ -44,8 +55,8 @@ export function Bazaar() {
         <div>
           <h3>Marketing that runs itself</h3>
           <p>
-            Every sale is also a listing and a vote. The more agents pay you, the higher you rank,
-            and the more agents find you.
+            Every sale is also a listing, and soon a vote: the more agents pay you, the higher you
+            will rank, and the more agents find you.
           </p>
         </div>
         <GetKeyLink />

@@ -108,8 +108,26 @@ it("has a card per product, linked as the design links it", () => {
   expect(within(products).getByRole("link", { name: "Explore Prices API" }).getAttribute("href")).toBe("/api/prices-api/");
   expect(within(products).getByRole("link", { name: "Explore x402 Facilitator" }).getAttribute("href")).toBe("/api/x402-facilitator/");
   expect(within(products).getByRole("link", { name: "See what’s coming" }).getAttribute("href")).toBe("#soroban-scan-api");
-  for (const text of ["api.sorobanscan.com/prices", "api.sorobanscan.com/x402", "api.sorobanscan.com/scan"])
+  for (const text of ["api.sorobanscan.com/prices", "x402-facilitator.sorobanscan.com", "api.sorobanscan.com/scan"])
     expect(within(products).getByText(text)).toBeTruthy();
+  expect(products.textContent).not.toContain("api.sorobanscan.com/x402");
+});
+
+// What the x402 Facilitator doesn't do yet keeps its place on the card, marked (akot, 2026-11-23):
+// production has no ranking, `/discovery/search` or MCP server.
+it("marks the x402 card's points that are not live yet", () => {
+  renderAt("/api/");
+  const card = within(document.getElementById("products")!)
+    .getByRole("heading", { level: 3, name: "x402 Facilitator" })
+    .closest("article")!;
+  const soon = [...card.querySelectorAll(".product-points li")]
+    .filter((li) => li.querySelector(".pill-soon")?.textContent === "Soon")
+    .map((li) => li.textContent);
+  expect(soon).toEqual([
+    "→Ranked by volume of successful purchases Soon",
+    "→Plain-language search and MCP server for agents Soon",
+  ]);
+  expect(card.querySelectorAll(".product-points li")).toHaveLength(4);
 });
 
 it("sends each use case to its product", () => {
@@ -149,6 +167,12 @@ it("keeps the design's placeholders", () => {
   expect(screen.getByText("[ACCESS MODEL: API key, x402 pay-per-call, or both]")).toBeTruthy();
   expect(document.body.textContent).toContain("[LEDGER]");
   expect(document.body.textContent).toContain("[TX_HASH]");
+});
+
+it("says the x402 Facilitator is on testnet today and on mainnet soon", () => {
+  renderAt("/api/");
+  const answer = within(document.getElementById("faq")!).getByText("Mainnet or testnet?").closest("details")!;
+  expect(answer.textContent).toContain("runs on testnet today, where it is free, and on mainnet soon");
 });
 
 it("answers the four questions", () => {

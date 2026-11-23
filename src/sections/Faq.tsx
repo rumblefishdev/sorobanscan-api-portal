@@ -16,7 +16,7 @@ const QUESTIONS = [
   {
     question: "Mainnet or testnet?",
     answer:
-      "The x402 Facilitator runs on both, and testnet is free. Network coverage for the other APIs is listed on each product page.",
+      "The x402 Facilitator runs on testnet today, where it is free, and on mainnet soon. Network coverage for the other APIs is listed on each product page.",
   },
   {
     question: "Can AI agents use these APIs?",
