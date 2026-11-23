@@ -20,7 +20,7 @@ const STEPS = [
   {
     label: "02 · Pay & get found",
     title: "Get paid, get discovered",
-    text: "The x402 Facilitator settles each call in about five seconds, fees sponsored. Every sale also ranks your API higher in the Bazaar.",
+    text: "The x402 Facilitator settles each call in about five seconds, fees sponsored. Every sale also lists your API in the Bazaar, and soon ranks it higher.",
   },
   {
     label: "03 · Verify",

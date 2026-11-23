@@ -21,7 +21,7 @@ const QUESTIONS = [
   {
     question: "Can AI agents use these APIs?",
     answer:
-      "Yes. Agents search the x402 Bazaar in plain language, through /discovery/search or our MCP server, get APIs ranked by successful purchases, and pay per request without accounts. No key is needed to search.",
+      "Yes. Agents browse the x402 Bazaar through /discovery/resources and pay per request without accounts. No key is needed to browse. Plain-language search, through /discovery/search or our MCP server, and ranking by successful purchases are coming soon.",
   },
 ];
 
