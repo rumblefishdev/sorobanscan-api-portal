@@ -135,6 +135,8 @@ describe('dev proxy', () => {
       '/api/login',
       '/api/dashboard',
       '/api/privacy-policy',
+      '/api/x402-facilitator/',
+      '/api/src/x402/main.tsx',
       // The hub's own backend at `/api/hub/*`, which the dev server serves
       // itself (`bff/src/vite-plugin.ts`).
       '/api/hub/',
@@ -208,7 +210,8 @@ describe('devProxy', () => {
   });
 });
 
-// The x402 Facilitator has no page of its own under /api/ any more: the hub links to its quick start.
+// The x402 Facilitator's page is a tree of this bundle (`src/x402/`), which the dev server serves
+// itself: no rule sends its address anywhere else, whatever an old setting says.
 describe('the x402 page on the dev server', () => {
   afterEach(() => {
     delete process.env['DEV_X402_PAGE_TARGET'];

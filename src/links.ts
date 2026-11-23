@@ -15,6 +15,9 @@ export const GITHUB_URL = "https://github.com/rumblefishdev/stellar-x402";
  */
 const BASE = import.meta.env.BASE_URL;
 
+/** The hub's own landing page, for a link to it from another tree's page. */
+export const HUB_URL = BASE;
+
 /** The Prices portal's landing page. */
 export const PRICES_API_URL = `${BASE}prices-api/`;
 
@@ -23,6 +26,12 @@ export const PRICES_API_URL = `${BASE}prices-api/`;
  * who is signed in already on to the dashboard.
  */
 export const LOGIN_URL = `${BASE}login`;
+
+/**
+ * The same sign-in, from the x402 page: `from=x402` opens the dashboard on x402's tab, where the
+ * key is. The page has no sign-in of its own.
+ */
+export const X402_LOGIN_URL = `${LOGIN_URL}?from=x402`;
 
 /**
  * The quick start and the API reference, one page of each for every product and open to
