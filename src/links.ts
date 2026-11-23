@@ -46,6 +46,9 @@ export const X402_LOGIN_URL = `${LOGIN_URL}?from=x402`;
 export const QUICK_START_URL = `${BASE}quick-start/prices`;
 export const DOCS_URL = `${BASE}docs/prices`;
 
+/** The x402 Facilitator's API reference: where its landing page's "View documentation" goes. */
+export const X402_DOCS_URL = `${BASE}docs/x402`;
+
 /** The ids of the page's parts that its own links point at, as `#${id}`. */
 export const ANCHORS = {
   top: "top", products: "products", choose: "choose",
