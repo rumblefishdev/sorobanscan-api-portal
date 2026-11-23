@@ -94,7 +94,7 @@ it("lists the three products in the hero's terminal", () => {
   expect(screen.getByText("2 APIs live · 1 coming soon")).toBeTruthy();
   for (const [name, href] of [
     ["prices-api/", "/api/prices-api/"],
-    ["quick-start/x402", "/api/quick-start/x402"],
+    ["x402-facilitator/", "/api/x402-facilitator/"],
     ["sorobanscan-api/", "#soroban-scan-api"],
   ] as const) expect(screen.getByRole("link", { name: new RegExp(name) }).getAttribute("href")).toBe(href);
 });
@@ -106,7 +106,7 @@ it("has a card per product, linked as the design links it", () => {
   for (const name of ["Prices API", "x402 Facilitator", "Soroban Scan API"])
     expect(within(products).getByRole("heading", { level: 3, name })).toBeTruthy();
   expect(within(products).getByRole("link", { name: "Explore Prices API" }).getAttribute("href")).toBe("/api/prices-api/");
-  expect(within(products).getByRole("link", { name: "Explore x402 Facilitator" }).getAttribute("href")).toBe("/api/quick-start/x402");
+  expect(within(products).getByRole("link", { name: "Explore x402 Facilitator" }).getAttribute("href")).toBe("/api/x402-facilitator/");
   expect(within(products).getByRole("link", { name: "See what’s coming" }).getAttribute("href")).toBe("#soroban-scan-api");
   for (const text of ["api.sorobanscan.com/prices", "api.sorobanscan.com/x402", "api.sorobanscan.com/scan"])
     expect(within(products).getByText(text)).toBeTruthy();
@@ -118,7 +118,7 @@ it("sends each use case to its product", () => {
   const hrefs = within(choose).getAllByRole("link").map((a) => a.getAttribute("href"));
   expect(hrefs).toEqual([
     "/api/prices-api/", "/api/prices-api/",
-    "/api/quick-start/x402", "/api/quick-start/x402",
+    "/api/x402-facilitator/", "/api/x402-facilitator/",
     "#soroban-scan-api",
   ]);
 });
@@ -207,13 +207,16 @@ it("scrolls to the part its address names when it opens", () => {
   }
 });
 
-it("links nothing to the x402 Facilitator's own page, and every x402 link is its quick start", () => {
+// The x402 Facilitator's page is back, a tree of this bundle (`src/x402/`): every x402 link on the
+// hub goes to it, as every Prices link goes to the Prices portal's.
+it("sends every x402 link to the x402 Facilitator's page", () => {
   renderAt("/api/");
-  const hrefs = Array.from(document.querySelectorAll("a")).map((a) => a.getAttribute("href") ?? "");
-  expect(hrefs.filter((h) => h.includes("x402-facilitator"))).toEqual([]);
   const x402 = screen.getAllByRole("link", { name: /x402/i }).filter((a) => !a.getAttribute("href")?.startsWith("#"));
-  expect(x402.length).toBeGreaterThanOrEqual(4);
-  for (const a of x402) expect(a.getAttribute("href"), a.textContent ?? "").toBe("/api/quick-start/x402");
+  // The hero's row, the card's button, the two use cases, the closing button and the footer's.
+  expect(x402.length).toBe(6);
+  for (const a of x402) expect(a.getAttribute("href"), a.textContent ?? "").toBe("/api/x402-facilitator/");
   const footer = screen.getByRole("contentinfo");
-  expect(within(footer).getByRole("link", { name: "x402 Facilitator" }).getAttribute("href")).toBe("/api/quick-start/x402");
+  expect(within(footer).getByRole("link", { name: "x402 Facilitator" }).getAttribute("href")).toBe("/api/x402-facilitator/");
+  const hrefs = Array.from(document.querySelectorAll("a")).map((a) => a.getAttribute("href") ?? "");
+  expect(hrefs.filter((h) => h.includes("quick-start/x402"))).toEqual([]);
 });

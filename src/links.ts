@@ -21,6 +21,9 @@ export const HUB_URL = BASE;
 /** The Prices portal's landing page. */
 export const PRICES_API_URL = `${BASE}prices-api/`;
 
+/** The x402 Facilitator's landing page, a tree of this bundle (`src/x402/`). */
+export const X402_URL = `${BASE}x402-facilitator/`;
+
 /**
  * The sign-in, one for every product: a page of another tree, so a plain link. It sends a visitor
  * who is signed in already on to the dashboard.
@@ -41,7 +44,6 @@ export const X402_LOGIN_URL = `${LOGIN_URL}?from=x402`;
  * would take that detour on every visit.
  */
 export const QUICK_START_URL = `${BASE}quick-start/prices`;
-export const X402_QUICK_START_URL = `${BASE}quick-start/x402`;
 export const DOCS_URL = `${BASE}docs/prices`;
 
 /** The ids of the page's parts that its own links point at, as `#${id}`. */
