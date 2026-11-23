@@ -179,9 +179,9 @@ AWS_PROFILE=stellar corepack pnpm run upload
 ```
 
 `scripts/upload-bundle.sh` builds with `VITE_PRODUCTS=prices,x402` and
-`VITE_PORTAL_API_ORIGIN=https://prices-api.sorobanscan.com`, stops if `dist/index.html` is missing
-or `dist` names the address `/api/x402-facilitator`, and copies `dist/` to
-`s3://production-soroban-explorer-api-spa/api/` with two `aws s3 sync` calls and no `--delete`:
+`VITE_PORTAL_API_ORIGIN=https://prices-api.sorobanscan.com`, stops if `dist/index.html` is missing,
+and copies `dist/` to `s3://production-soroban-explorer-api-spa/api/` with two `aws s3 sync` calls
+and no `--delete`:
 `assets/` with `Cache-Control: public, max-age=31536000, immutable`, the rest with
 `public, max-age=0, must-revalidate`. The old Prices portal's `api/prices-api/index.html` and its
 assets stay, and so do earlier builds' assets. The bundle's `prices-api/openapi.json` replaces the
@@ -189,13 +189,14 @@ old portal's file of that name, which is the same document.
 
 Nothing serves it yet: `https://sorobanscan.com/api/assets/…` still answers `302` to `/api/`.
 
-The explorer serves from the bundle only `/api/`, `/api/assets/*` and the addresses under six
-first names: `login`, `dashboard`, `quick-start`, `docs`, `privacy-policy`, `prices-api`
-(`API_HUB_PAGES` in its `infra/src/lib/cloudfront-functions/api-hub-routing.ts`). Any other first
-name answers `302` to `/api/`. So a new page at a new first name (`/api/status`), or a file at the
-bundle's top level (`public/robots.txt` served as `/api/robots.txt`), needs that list changed and
-the explorer's `-Delivery` released before the bundle that uses it is uploaded. A page or a file
-under one of the six names needs nothing there.
+The explorer serves from the bundle only `/api/`, `/api/assets/*` and the addresses under seven
+first names: `login`, `dashboard`, `quick-start`, `docs`, `privacy-policy`, `prices-api`,
+`x402-facilitator` (`API_HUB_PAGES` in its `infra/src/lib/cloudfront-functions/api-hub-routing.ts`).
+Any other first name answers `302` to `/api/`. So a new page at a new first name (`/api/status`),
+or a file at the bundle's top level (`public/robots.txt` served as `/api/robots.txt`), needs that
+list changed and the explorer's `-Delivery` released before the bundle that uses it is uploaded.
+`x402-facilitator` is the x402 page's: until the explorer's list has it, `/api/x402-facilitator/`
+answers `302` to `/api/`. A page or a file under one of the seven names needs nothing there.
 
 ### 4. The explorer: the backend
 
@@ -262,6 +263,9 @@ Pages, from the bundle (`curl -sI` prints the status line and the headers):
 curl -sI https://sorobanscan.com/api | grep -i -e '^HTTP' -e '^location'  # 301, Location: /api/
 curl -sI https://sorobanscan.com/api/ | head -n 1                 # 200
 curl -sI https://sorobanscan.com/api/quick-start/x402 | head -n 1 # 200
+curl -sI https://sorobanscan.com/api/x402-facilitator | grep -i -e '^HTTP' -e '^location'  # 301, Location: /api/x402-facilitator/
+curl -sI https://sorobanscan.com/api/x402-facilitator/ | head -n 1          # 200
+curl -sI https://sorobanscan.com/api/x402-facilitator/anything | head -n 1  # 200: the x402 page, which has no routes
 curl -sI https://sorobanscan.com/api/docs/prices | head -n 1      # 200
 curl -sI https://sorobanscan.com/api/docs/x402/anything | head -n 1  # 200: the page then goes to /api/docs/x402
 curl -sI https://sorobanscan.com/api/dashboard/prices | head -n 1 # 200
@@ -320,8 +324,6 @@ answered `429`.
 Old addresses:
 
 ```sh
-curl -sI https://sorobanscan.com/api/x402-facilitator | grep -i -e '^HTTP' -e '^location'          # 302, Location: /api/
-curl -sI https://sorobanscan.com/api/x402-facilitator/anything | grep -i -e '^HTTP' -e '^location' # 302, Location: /api/
 curl -sI https://sorobanscan.com/api/openapi.json | grep -i -e '^HTTP' -e '^location'              # 301, Location: /api/prices-api/openapi.json
 curl -sI https://sorobanscan.com/prices-api/foo | grep -i -e '^HTTP' -e '^location'                # 301, Location: /api/prices-api/foo
 curl -sI https://sorobanscan.com/pricing-api/foo | grep -i -e '^HTTP' -e '^location'               # 301, Location: /api/prices-api/foo
