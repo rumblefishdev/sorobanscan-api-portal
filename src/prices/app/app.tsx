@@ -3235,6 +3235,13 @@ type Gate = {
  * The redirects are `replace`, so Back from the dashboard goes to wherever the
  * visitor was before signing in rather than to a `/` that bounces them
  * straight forward again.
+ *
+ * With the hub's account pages, the landing page forwards on no session
+ * (akot, 2026-11-23). It is where the hub's "Explore Prices API" leads, so it
+ * shows the page to everybody. A session of this portal's own backend is not
+ * the hub's: forwarding on it sent a visitor who had once signed in here to
+ * the hub's dashboard, which has no session for them, and on to its sign-in.
+ * A session of the hub's is no reason either: the visitor asked for the page.
  */
 function RootRoute({
   gate,
@@ -3245,25 +3252,31 @@ function RootRoute({
 }) {
   const location = useLocation();
   const canOfferKey = gate.open;
+  // ⚠️ `issue` counts as coming back from Discord too, and used not to: an
+  // issue round-trip whose session expired mid-flight landed here with
+  // `?issue=…` still on the URL, matched neither branch, and rendered the
+  // marketing page — the one journey where the visitor is owed an answer
+  // ends on the page that answers nothing. `/login` reads `signin` and the
+  // dashboard reads `issue`, so a landing that carries only `issue` needs
+  // the sign-in card first anyway; forwarding it keeps the query alive
+  // through that hop instead of dropping the refusal on the floor.
+  const landed = new URLSearchParams(location.search);
+  const backFromDiscord = landed.has('signin') || landed.has('issue');
 
-  if (gate.open && gate.settled) {
+  if (accountPages === 'hub') {
+    // Only the old backend's callback, which still lands here, goes on: to
+    // `/login`, which is the hub's sign-in now.
+    if (gate.open && backFromDiscord) {
+      return <Navigate to={`/login${location.search}`} replace />;
+    }
+  } else if (gate.open && gate.settled) {
     if (gate.authenticated) {
       return <Navigate to={`/dashboard${location.search}`} replace />;
     }
     // A signed-out visitor stays on the landing page — UNLESS they have just
     // come back from Discord, in which case the banner explaining what
     // happened belongs beside the button they will press again.
-    //
-    // ⚠️ `issue` counts as coming back from Discord too, and used not to: an
-    // issue round-trip whose session expired mid-flight landed here with
-    // `?issue=…` still on the URL, matched neither branch, and rendered the
-    // marketing page — the one journey where the visitor is owed an answer
-    // ends on the page that answers nothing. `/login` reads `signin` and the
-    // dashboard reads `issue`, so a landing that carries only `issue` needs
-    // the sign-in card first anyway; forwarding it keeps the query alive
-    // through that hop instead of dropping the refusal on the floor.
-    const landed = new URLSearchParams(location.search);
-    if (landed.has('signin') || landed.has('issue')) {
+    if (backFromDiscord) {
       return <Navigate to={`/login${location.search}`} replace />;
     }
   }
@@ -3726,7 +3739,11 @@ export function App({ accountPages = 'hub' }: { accountPages?: AccountPages }) {
   useScrollOnNavigate();
   const probe = useConfigProbe();
   const open = probe.state === 'ok' && probe.config.enabled;
-  const { session, onSignOut, reload } = useSession(open);
+  // Only this portal's own sign-in and dashboard read its backend's session.
+  // With the hub's, nothing does (`RootRoute`), so the page doesn't ask.
+  const { session, onSignOut, reload } = useSession(
+    open && accountPages === 'own',
+  );
 
   const gate: Gate = {
     probe,
