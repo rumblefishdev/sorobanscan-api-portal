@@ -1,4 +1,5 @@
 import { GetKeyLink, SectionHead } from "../components/SectionHead";
+import { Soon } from "../components/Soon";
 
 const STEPS = [
   {
@@ -11,15 +12,20 @@ const STEPS = [
   },
   {
     title: "Settle your first payment",
-    text: "Add the key to the facilitator client and charge your first request.",
+    text: "Add the key to the facilitator client and charge your first request on mainnet, once it opens.",
   },
   {
     title: "Monitor usage",
+    soon: true,
     text: "Track settlements and limits from the dashboard, per network.",
   },
 ];
 
-/** The card as the design draws it, with its placeholders: nothing here reads a key yet. */
+/**
+ * The card as the design draws it, an illustration: nothing here reads a key. A key is `x402_`
+ * and 43 more characters (stellar-x402's `packages/api-keys`); the use of the pubnet quota is
+ * not counted yet, so its figure is marked Soon.
+ */
 function KeyCard() {
   return (
     <div className="card key-card">
@@ -29,12 +35,12 @@ function KeyCard() {
       </div>
       <div className="key-field">
         <span>API key</span>
-        <code>[YOUR_KEY_PREFIX]_••••••••••••••••</code>
+        <code>x402_••••••••••••••••</code>
       </div>
       <div className="grid" style={{ gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 12 }}>
         <div className="tile inset">
           <code>stellar:pubnet</code>
-          <span className="figure">[USED] / [QUOTA]</span>
+          <Soon />
           <span>settlements this month</span>
         </div>
         <div className="tile inset">
@@ -56,7 +62,7 @@ export function GetKey() {
           id="key-title"
           title="Get your API key in under a minute"
         >
-          No emails. No waiting. No manual approval. One key works on mainnet and testnet.
+          No emails. No waiting. No manual approval. Testnet needs no key; this one is for mainnet.
         </SectionHead>
         <ol
           className="grid"
@@ -65,7 +71,15 @@ export function GetKey() {
           {STEPS.map((step, i) => (
             <li key={step.title} className="card">
               <span className="step-no">{String(i + 1).padStart(2, "0")}</span>
-              <h3>{step.title}</h3>
+              <h3>
+                {step.title}
+                {step.soon && (
+                  <>
+                    {" "}
+                    <Soon />
+                  </>
+                )}
+              </h3>
               <p>{step.text}</p>
             </li>
           ))}

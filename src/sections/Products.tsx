@@ -28,7 +28,8 @@ type Product = {
   icon: ReactNode;
   live: boolean;
   about: string;
-  points: readonly string[];
+  /** What it offers; a point that is not live yet carries `soon`, drawn with the Soon pill. */
+  points: readonly (string | { text: string; soon: true })[];
   endpoint: string;
   /** The card's buttons: the product's own page first, in the accent ("soon" outlined in it). */
   links: readonly { label: string; href: string; kind: "primary" | "ghost" | "soon" }[];
@@ -70,11 +71,11 @@ const PRODUCTS: readonly Product[] = [
       "Get your API found by AI agents. Charge per request on Stellar, and every sale lists your API in our Bazaar, where agents search for what to buy.",
     points: [
       "Bazaar: listed on your first sale",
-      "Ranked by volume of successful purchases",
-      "Plain-language search and MCP server for agents",
+      { text: "Ranked by volume of successful purchases", soon: true },
+      { text: "Plain-language search and MCP server for agents", soon: true },
       "Verify, settle, sponsored fees, any SEP-41 token",
     ],
-    endpoint: "api.sorobanscan.com/x402",
+    endpoint: "x402-facilitator.sorobanscan.com",
     links: [
       { label: "Explore x402 Facilitator", href: X402_URL, kind: "primary" },
       { label: "GitHub", href: GITHUB_URL, kind: "ghost" },
@@ -121,12 +122,21 @@ function ProductCard({ product }: { product: Product }) {
         <p>{about}</p>
       </div>
       <ul className="product-points">
-        {points.map((point) => (
-          <li key={point}>
-            <span aria-hidden="true">→</span>
-            {point}
-          </li>
-        ))}
+        {points.map((point) =>
+          typeof point === "string" ? (
+            <li key={point}>
+              <span aria-hidden="true">→</span>
+              {point}
+            </li>
+          ) : (
+            <li key={point.text}>
+              <span aria-hidden="true">→</span>
+              <div>
+                {point.text} <span className="pill pill-soon">Soon</span>
+              </div>
+            </li>
+          ),
+        )}
       </ul>
       <div className="product-end">
         <code>{endpoint}</code>

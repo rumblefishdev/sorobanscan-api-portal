@@ -7,19 +7,19 @@ const QUESTIONS: [question: string, answer: string][] = [
   ],
   [
     "What is the Bazaar?",
-    "A catalog of every API paid through our facilitator. Agents search it in plain language and get ranked results they can pay for right away. For sellers it is a distribution channel: agents find you on their own.",
+    "A catalog of every API paid through our facilitator. Agents browse it today and pay for what they find right away; plain-language search and ranked results are coming soon. For sellers it is a distribution channel: agents find you on their own.",
   ],
   [
     "How do I get listed?",
-    "Add the bazaar extension with a description to your route config. Your endpoint is listed after its first settled payment and shows up in /discovery/resources, /discovery/search and the MCP server.",
+    "Add the bazaar extension with a description to your route config. Your endpoint is listed after its first settled payment and shows up in /discovery/resources now, and in /discovery/search and the MCP server when they open.",
   ],
   [
     "How is the ranking decided?",
-    "By relevance to the query and by the volume of successful purchases. New listings are visible from day one and climb as they sell. Placeholder descriptions rank lower.",
+    "Ranking is coming soon. It will weigh relevance to the query and the volume of successful purchases: new listings are visible from day one and climb as they sell, and placeholder descriptions rank lower.",
   ],
   [
     "How do I get an API key?",
-    "Sign in with Discord and the key is issued immediately. The same key works on mainnet and testnet. Buyers never need one: the key belongs to the server that calls the facilitator.",
+    "Sign in with Discord and the key is issued at once. It is for mainnet, which opens soon; testnet needs no key. Buyers never need one: the key belongs to the server that calls the facilitator.",
   ],
   [
     "Do buyers need XLM?",
@@ -35,11 +35,11 @@ const QUESTIONS: [question: string, answer: string][] = [
   ],
   [
     "Mainnet or testnet?",
-    "Both, on the same host. The network comes from each payment, so switching is one string. Testnet is free for development.",
+    "Testnet today, mainnet soon, on the same host. The network comes from each payment, so switching is one string. Testnet is free for development.",
   ],
   [
     "What does it cost on mainnet?",
-    "[PRICING: plan or per-settlement fee]. Network fees are always included: we sponsor them, so buyers pay only the price you set.",
+    "Mainnet pricing is coming soon. Network fees are always included: we sponsor them, so buyers pay only the price you set.",
   ],
   [
     "Can I run it myself?",

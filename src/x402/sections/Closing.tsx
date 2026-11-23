@@ -2,10 +2,10 @@ import { EXPLORER_URL, PRICES_API_URL } from "../../links";
 import { DocsLink, GetKeyLink, SectionHead } from "../components/SectionHead";
 
 const LIMITS = [
-  "Every facilitator call carries your key; buyers never need one",
-  "Rate limits per key on /verify, /settle and /discovery, with a clear 429",
+  "On mainnet, your server’s calls to /verify and /settle carry your key; buyers never need one",
+  "Rate limits on /verify, /settle and /discovery, with a clear 429",
   "Spend budgets per payer, recipient and asset stop fee-drain abuse",
-  "Network fees sponsored on mainnet and testnet alike",
+  "Network fees sponsored on testnet today, and on mainnet when it opens",
 ];
 
 export function FairAccess() {
@@ -13,8 +13,7 @@ export function FairAccess() {
     <section aria-labelledby="access-title" className="wrap section split">
       <div className="col" style={{ flex: "1 1 440px", gap: 16 }}>
         <SectionHead badge="Fair access" id="access-title" title="Reliable on both networks">
-          Limits per key and spend budgets keep sponsored fees safe and settlement fast for
-          everyone.
+          Rate limits and spend budgets keep sponsored fees safe and settlement fast for everyone.
         </SectionHead>
         <ul className="arrows">
           {LIMITS.map((limit) => (
@@ -37,8 +36,8 @@ export function FairAccess() {
         </div>
         <div className="card stat">
           <span>Mainnet</span>
-          <span className="figure">[PRICE]</span>
-          <span>[per settlement / month]</span>
+          <span className="figure">Soon</span>
+          <span>Pricing to be announced</span>
         </div>
         <div className="card stat">
           <span>Settlement</span>
@@ -98,7 +97,7 @@ export function Closing() {
         <h2 id="cta-title">Get found by agents. Get paid on Stellar.</h2>
         <p className="lead">
           Get your key, add the bazaar extension, and your first sale puts your API in front of
-          every agent that searches. Your buyers need no key and no XLM.
+          every agent that browses the Bazaar. Your buyers need no key and no XLM.
         </p>
         <div className="btn-row">
           <GetKeyLink />

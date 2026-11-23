@@ -1,14 +1,18 @@
 import type { ReactNode } from "react";
 import { SectionHead } from "../components/SectionHead";
+import { Soon } from "../components/Soon";
 
-/** What a settlement-only facilitator has: `true`, `false`, or words. Ours has every row. */
-const ROWS: [feature: string, others: boolean | string][] = [
+/**
+ * What a settlement-only facilitator has: `true`, `false`, or words. Ours has every row, three of
+ * them soon: those show the Soon tag in our column rather than a tick.
+ */
+const ROWS: [feature: string, others: boolean | string, soon?: true][] = [
   ["Verify and settle x402 payments", true],
   ["Sponsored network fees", true],
   ["Catalog of APIs that actually get paid", false],
-  ["Ranking by volume of successful purchases", false],
-  ["Plain-language search for agents", false],
-  ["MCP server: search and pay from the agent loop", false],
+  ["Ranking by volume of successful purchases", false, true],
+  ["Plain-language search for agents", false, true],
+  ["MCP server: search and pay from the agent loop", false, true],
   ["Open source, self-hostable", "Varies"],
 ];
 
@@ -91,7 +95,7 @@ const REST = [
   },
   {
     title: "Open source",
-    text: "Apache-2.0, permissive dependencies only. Use our hosted endpoint on mainnet and testnet, or run your own.",
+    text: "Apache-2.0, permissive dependencies only. Use our hosted endpoint on testnet today and on mainnet soon, or run your own.",
     icon: icon(
       <>
         <path d="M8 8l-5 4 5 4" />
@@ -124,11 +128,11 @@ export function Why() {
             </tr>
           </thead>
           <tbody>
-            {ROWS.map(([feature, others]) => (
+            {ROWS.map(([feature, others, soon]) => (
               <tr key={feature}>
                 <th scope="row">{feature}</th>
                 <td>{typeof others === "string" ? others : others ? yes : no}</td>
-                <td className="ours">{yes}</td>
+                <td className="ours">{soon ? <Soon /> : yes}</td>
               </tr>
             ))}
           </tbody>

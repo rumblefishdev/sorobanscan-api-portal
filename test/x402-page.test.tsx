@@ -157,3 +157,115 @@ describe.each(["/api/", "/api/next/"])("the page in a bundle built for %s", (bas
     expect(footer.getByRole("link", { name: "All APIs" }).getAttribute("href")).toBe(base);
   });
 });
+
+// Facts on production, 2026-11-23: the facilitator is x402-facilitator.sorobanscan.com, it lists
+// only stellar:testnet, `/discovery/search` and `/mcp` answer 404, pubnet's `/verify` refuses a
+// call without a key and pubnet is not open, rate limits are per address, and the price is not
+// decided. What the design shows that isn't live keeps its place, marked Soon (akot, 2026-11-23).
+describe("what the page claims", () => {
+  const text = () => document.body.textContent ?? "";
+  /** The text of the row, tile or heading a Soon tag sits in. */
+  const taggedIn = (selector: string) =>
+    [...document.querySelectorAll(selector)]
+      .filter((element) => element.querySelector(".soon")?.textContent === "Soon")
+      .map((element) => element.textContent);
+
+  it("shows none of the design's placeholders and no address the facilitator doesn't have", () => {
+    at();
+    for (const placeholder of ["[PRICE]", "[USED]", "[QUOTA]", "[PRICING", "[YOUR_KEY_PREFIX]"])
+      expect(text()).not.toContain(placeholder);
+    expect(text()).not.toMatch(/\[[A-Za-z_][^\]\n]*\]/);
+    expect(text()).not.toContain("api.sorobanscan.com");
+    expect(text()).not.toMatch(/per key/i);
+  });
+
+  it("is live on testnet and says mainnet comes soon", () => {
+    at();
+    expect(screen.getByText("Live on Stellar Testnet · Mainnet soon")).toBeTruthy();
+    expect(text()).not.toMatch(/Live on Stellar Mainnet/);
+    expect(text()).not.toContain("One key works on mainnet and testnet");
+  });
+
+  it("tags every part that is not live, and only those", () => {
+    at();
+    expect(screen.getByRole("heading", { level: 2, name: "Search our Bazaar Soon" })).toBeTruthy();
+    expect(taggedIn("#bazaar h3")).toEqual([
+      "Ranked by successful purchases Soon",
+      "Found in plain language Soon",
+    ]);
+    expect(taggedIn(".compare tbody tr")).toEqual([
+      "Ranking by volume of successful purchases—Soon",
+      "Plain-language search for agents—Soon",
+      "MCP server: search and pay from the agent loop—Soon",
+    ]);
+    expect(taggedIn(".endpoints li")).toEqual([
+      "GET/discovery/searchSoonPlain-language search, ranked",
+      "POST/mcpSoonSearch and pay from agents",
+    ]);
+    expect(taggedIn("#endpoints .tile")).toEqual(["stellar:pubnetSoon"]);
+    expect(taggedIn("#get-key h3")).toEqual(["Monitor usage Soon"]);
+    expect(taggedIn(".key-card .tile")).toEqual(["stellar:pubnetSoonsettlements this month"]);
+    // Eleven in all: the ones above, and none anywhere else.
+    expect(document.querySelectorAll(".soon")).toHaveLength(11);
+  });
+
+  it("keeps what is live untagged", () => {
+    at();
+    const tile = (name: string) =>
+      [...document.querySelectorAll("#endpoints .tile")].find(
+        (element) => element.querySelector("code")?.textContent === name,
+      );
+    expect(tile("stellar:testnet")?.textContent).toBe("stellar:testnetLive · free");
+    expect(tile("stellar:testnet")?.querySelector(".state.live")).not.toBeNull();
+    for (const path of ["/supported", "/verify", "/settle", "/discovery/resources"]) {
+      const row = [...document.querySelectorAll(".endpoints li")].find(
+        (li) => li.querySelector("code")?.textContent === path,
+      );
+      expect(row?.querySelector(".soon"), path).toBeNull();
+    }
+  });
+
+  it("says the Bazaar can be browsed today, and search and ranking come later", () => {
+    at();
+    const foot = document.querySelector(".search-foot")!.textContent;
+    expect(foot).toContain("/discovery/search and our MCP server is coming");
+    expect(foot).toContain("browse every listing at /discovery/resources");
+  });
+
+  it("prices mainnet as Soon and keeps testnet free", () => {
+    at();
+    const stat = (label: string) =>
+      [...document.querySelectorAll(".stat")].find(
+        (card) => card.querySelector("span")?.textContent === label,
+      );
+    expect(stat("Mainnet")?.querySelector(".figure")?.textContent).toBe("Soon");
+    expect(stat("Testnet")?.querySelector(".figure")?.textContent).toBe("$0");
+  });
+
+  it("shows code that works on testnet today, against the facilitator's own host, with no key", () => {
+    at();
+    const quickstart = document.getElementById("quickstart")!;
+    const code = [...quickstart.querySelectorAll("pre")].map((pre) => pre.textContent).join("\n");
+    expect(code).toContain('url: "https://x402-facilitator.sorobanscan.com"');
+    expect(code).toContain('.register("stellar:testnet"');
+    expect(code).not.toContain("stellar:pubnet");
+    expect(code).not.toMatch(/Authorization|API_KEY|createAuthHeaders/);
+    const example = document.getElementById("endpoints")!.querySelector("pre")!.textContent;
+    expect(example).toContain('"network": "stellar:testnet"');
+  });
+
+  it("answers the network, key, ranking and price questions as things are", () => {
+    at();
+    const answer = (question: string) =>
+      screen.getByText(question).closest("details")!.querySelector("p")!.textContent;
+    expect(answer("Mainnet or testnet?")).toMatch(/^Testnet today, mainnet soon, on the same host\./);
+    expect(answer("How do I get an API key?")).toContain(
+      "It is for mainnet, which opens soon; testnet needs no key.",
+    );
+    expect(answer("How is the ranking decided?")).toMatch(/^Ranking is coming soon\./);
+    expect(answer("What does it cost on mainnet?")).toMatch(/^Mainnet pricing is coming soon\./);
+    expect(answer("How do I get listed?")).toContain(
+      "/discovery/resources now, and in /discovery/search and the MCP server when they open",
+    );
+  });
+});
