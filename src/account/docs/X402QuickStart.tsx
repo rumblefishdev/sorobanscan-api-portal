@@ -247,6 +247,7 @@ const VERIFY_VALID = json({ isValid: true, payer: "BUYER_STELLAR_ADDRESS" });
 const VERIFY_REFUSED = json({
   isValid: false,
   invalidReason: "invalid_exact_stellar_payto_trustline_missing",
+  extra: { expirationLedger: 1234567 },
 });
 const SETTLE_REQUEST = snippet(
   `curl -X POST "${BASE_URL}/settle" \\`,
@@ -709,7 +710,10 @@ function ByHand() {
         </Typography>
         <Note>
           Checks the payment against the requirements and that it would succeed on chain. Nothing
-          is sent and nothing is recorded, so the same payment can be verified any number of times.
+          is sent, and a valid payment can be verified any number of times. A refusal is recorded:
+          the same payment never settles through this facilitator afterwards, even once it would
+          pass, so the buyer signs a new one once the ledger in <C>extra.expirationLedger</C> has
+          closed.
         </Note>
         <SnippetTabs
           id="verify-lang"
@@ -723,9 +727,9 @@ function ByHand() {
         </Box>
         <Note>
           <C>invalidReason</C> is a stable code; <C>invalidMessage</C>, when present, is a
-          sentence for a person. A <C>503 rpc_unavailable</C> means no verdict was reached: the
-          payment was not judged, and the same request may be sent again after{" "}
-          <C>Retry-After</C>.
+          sentence for a person. A <C>503</C> gives no verdict: <C>rpc_unavailable</C> when no
+          Stellar RPC judged the payment, <C>store_unavailable</C> when a refusal could not be
+          recorded. The same request may be sent again after <C>Retry-After</C>.
         </Note>
       </Stack>
 
@@ -778,8 +782,8 @@ function ByHand() {
               <>
                 <C>invalid_exact_stellar_*</C>, <C>invalid_network</C>
               </>,
-              "The checks refused the payment before anything was recorded.",
-              "Fix what the reason names.",
+              "The checks refused the payment before anything was sent. The refusal is recorded, so the same payment gets the same answer again.",
+              "Fix what the reason names; the buyer signs a new payment once extra.expirationLedger has closed.",
             ],
           ]}
         />
@@ -799,7 +803,7 @@ function Bazaar() {
     <DocSection
       id="bazaar"
       title="Get listed in the Bazaar"
-      lede="The Bazaar is the catalog of resources that were paid for through this facilitator. Buyers and AI agents read it to find what they can pay for, and how to call it."
+      lede="The Bazaar is the catalog of paid resources on Stellar. Buyers and AI agents read it to find what they can pay for, and how to call it."
     >
       <Steps
         steps={[
@@ -819,8 +823,8 @@ function Bazaar() {
             body: (
               <>
                 A settlement whose payment carries the <C>bazaar</C> extension adds the resource,
-                or refreshes its entry. There is no other way in, so every entry has been paid for
-                at least once.
+                or refreshes its entry. The operator may also seed the catalog from a
+                seller&apos;s own <C>402</C> answers, which pass the same checks.
               </>
             ),
           },
