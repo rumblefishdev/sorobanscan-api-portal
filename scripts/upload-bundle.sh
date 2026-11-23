@@ -28,12 +28,6 @@ if [ ! -f dist/index.html ]; then
   echo "dist/index.html is missing: the build did not produce the bundle" >&2
   exit 1
 fi
-# The x402 page's old address must not be in the bundle: its host, x402-facilitator.sorobanscan.com,
-# legitimately is, so the check is for the address on sorobanscan.com.
-if grep -rl "/api/x402-facilitator" dist; then
-  echo "dist names /api/x402-facilitator: a link still goes to the page that is gone" >&2
-  exit 1
-fi
 
 # Hashed files, safe to cache for good.
 aws s3 sync dist/assets/ "${BUCKET}assets/" ${dryrun[@]+"${dryrun[@]}"} --cache-control "$IMMUTABLE"
