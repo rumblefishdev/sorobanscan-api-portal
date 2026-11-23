@@ -750,7 +750,7 @@ describe("the hub's sign-in and dashboard", () => {
   });
 
   // The old backend's callback still lands on `/`, and `RootRoute` forwards
-  // from there to `/login` and `/dashboard`: both end at the hub now.
+  // its outcome from there to `/login`, which ends at the hub now.
   it('sends a sign-in outcome from the landing to the hub sign-in', async () => {
     vi.stubGlobal('location', { replace, assign });
     openAndSignedOut();
@@ -760,13 +760,57 @@ describe("the hub's sign-in and dashboard", () => {
     expect(assign).not.toHaveBeenCalled();
   });
 
-  it("sends the old portal's session from the landing to the Prices tab", async () => {
+  // The hub's "Explore Prices API" leads here (akot, 2026-11-23). A session of
+  // the old backend used to send the visitor on to the hub's dashboard, which
+  // has no session for them, and from there to its sign-in.
+  it("keeps a visitor with the old portal's session on the landing page", async () => {
     vi.stubGlobal('location', { replace, assign });
-    openAndSignedIn();
+    const fetchMock = openAndSignedIn();
     renderAt('/');
 
-    await waitFor(() => expect(replace).toHaveBeenCalledWith(HUB_DASHBOARD));
+    // The portal is confirmed open (the hero offers a key) and the hub has
+    // answered (its bar is drawn): every reason the page had to forward.
+    const hero = (await screen.findByRole('heading', { level: 1 })).closest(
+      'header',
+    );
+    await within(hero as HTMLElement).findByRole('link', {
+      name: /get api key/i,
+    });
+    await screen.findByRole('navigation', { name: HUB_BAR_SIGNED_OUT });
+
+    // The old backend isn't asked who the visitor is, so nothing forwards.
+    expect(fetchMock.mock.calls.some(([url]) => url === ME_URL)).toBe(false);
+    expect(replace).not.toHaveBeenCalled();
     expect(assign).not.toHaveBeenCalled();
+    expect(lastPath).toBe('/');
+  });
+
+  it('keeps a visitor signed in to the hub on the landing page', async () => {
+    vi.stubGlobal('location', { replace, assign });
+    stubRoutes({
+      [CONFIG_URL]: openConfig,
+      [SPEC_URL]: () => ({ json: async () => FIXTURE }),
+      [HUB_ME_URL]: () => ({
+        json: async () => ({
+          authenticated: true,
+          id: '80351110224678912',
+          username: 'akot',
+        }),
+      }),
+    });
+    renderAt('/');
+
+    const hero = (await screen.findByRole('heading', { level: 1 })).closest(
+      'header',
+    );
+    await within(hero as HTMLElement).findByRole('link', {
+      name: /get api key/i,
+    });
+    await screen.findByRole('navigation', { name: 'Dashboard' });
+
+    expect(replace).not.toHaveBeenCalled();
+    expect(assign).not.toHaveBeenCalled();
+    expect(lastPath).toBe('/');
   });
 });
 
@@ -1060,11 +1104,14 @@ describe("the hub's bar on the landing page", () => {
     renderAt(PAGE);
 
     await screen.findByRole('navigation', { name: 'Dashboard' });
-    // This portal's own backend has been asked too by then, so the count is
-    // not one taken before the page had settled.
-    await waitFor(() =>
-      expect(fetchMock.mock.calls.some(([url]) => url === ME_URL)).toBe(true),
-    );
+    // The portal is confirmed open by then (the hero offers a key), so the
+    // count is not one taken before the page had settled. Its own backend's
+    // session is not asked for under the hub's account pages (`RootRoute`).
+    const hero = screen.getByRole('heading', { level: 1 }).closest('header');
+    await within(hero as HTMLElement).findByRole('link', {
+      name: /get api key/i,
+    });
+    expect(fetchMock.mock.calls.some(([url]) => url === ME_URL)).toBe(false);
     expect(
       fetchMock.mock.calls.filter(([url]) => url === HUB_ME_URL),
     ).toHaveLength(1);
