@@ -1,5 +1,5 @@
 import { SectionHead } from "../components/SectionHead";
-import { ANCHORS, PRICES_API_URL, X402_QUICK_START_URL } from "../links";
+import { ANCHORS, PRICES_API_URL, X402_URL } from "../links";
 
 /** "Which API?": what someone is building, and the product it leads to. */
 const USE_CASES = [
@@ -18,13 +18,13 @@ const USE_CASES = [
   {
     need: "I want AI agents to find my API and pay for it on their own",
     product: "x402 Facilitator",
-    href: X402_QUICK_START_URL,
+    href: X402_URL,
     live: true,
   },
   {
     need: "My AI agent needs to find paid tools and data, and pay for them",
     product: "x402 Facilitator",
-    href: X402_QUICK_START_URL,
+    href: X402_URL,
     live: true,
   },
   {

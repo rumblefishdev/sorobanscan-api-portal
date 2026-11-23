@@ -1,4 +1,4 @@
-import { ANCHORS, PRICES_API_URL, X402_QUICK_START_URL } from "../links";
+import { ANCHORS, PRICES_API_URL, X402_URL } from "../links";
 
 /** The rows of the hero's `ls /api`: each product, where it lives, and whether it is out yet. */
 const DIRECTORY = [
@@ -9,8 +9,8 @@ const DIRECTORY = [
     live: true,
   },
   {
-    path: "quick-start/x402",
-    href: X402_QUICK_START_URL,
+    path: "x402-facilitator/",
+    href: X402_URL,
     about: "Get paid and found by AI agents",
     live: true,
   },
