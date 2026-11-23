@@ -175,6 +175,15 @@ it("says the x402 Facilitator is on testnet today and on mainnet soon", () => {
   expect(answer.textContent).toContain("runs on testnet today, where it is free, and on mainnet soon");
 });
 
+// Production has no ranking, `/discovery/search` or MCP server yet (2026-11-23): the hub says so.
+it("claims no x402 search or ranking as live", () => {
+  renderAt("/api/");
+  const agents = within(document.getElementById("faq")!).getByText("Can AI agents use these APIs?").closest("details")!;
+  expect(agents.textContent).toContain("Agents browse the x402 Bazaar through /discovery/resources");
+  expect(agents.textContent).toContain("are coming soon");
+  expect(document.getElementById("stack")!.textContent).toContain("lists your API in the Bazaar, and soon ranks it higher");
+});
+
 it("answers the four questions", () => {
   renderAt("/api/");
   const faq = document.getElementById("faq")!;
