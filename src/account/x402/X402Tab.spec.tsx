@@ -51,6 +51,22 @@ const REVOKED_OPEN = {
   key: { state: "revoked", revoked_at: "2026-10-10T09:00:00Z", can_issue: true },
   details: { showable: false },
 };
+/** x402's `details.usage`: a free account's payments on Mainnet this month, 312 of its 1,000. */
+const USAGE = {
+  used: 312,
+  remaining: 688,
+  limit: 1000,
+  period_start: "2026-11-01T00:00:00Z",
+  period_end: "2026-12-01T00:00:00Z",
+  resets_at: "2026-12-01T00:00:00Z",
+  as_of: "2026-11-24T12:00:00Z",
+  plan: { name: "free", quota_limit: 1000, quota_period: "month" },
+};
+/** `account` with `usage` in its details, as an x402 with the account quota answers. */
+const withUsage = <T extends { details: object }>(account: T, usage: unknown = USAGE) => ({
+  ...account,
+  details: { ...account.details, usage },
+});
 const REVEALED = { key_id: "k_7f3a9c", value: KEY_VALUE, created_at: "2026-09-02T10:00:00Z" };
 const REVOCATION = {
   revoked: true,
@@ -104,6 +120,18 @@ const card = async () => {
   ) as HTMLElement;
 };
 
+/** The dashboard card titled `title`, once the tab has the account's answer. */
+const tile = async (title: string) => {
+  await card();
+  return (await screen.findByRole("heading", { level: 2, name: title })).closest(
+    "section",
+  ) as HTMLElement;
+};
+
+/** The card's text once its heading is taken out. */
+const body = (section: HTMLElement) =>
+  (section.textContent ?? "").replace(within(section).getByRole("heading").textContent ?? "", "");
+
 beforeEach(() => {
   where = "";
   vi.stubEnv("VITE_PRODUCTS", "prices,x402");
@@ -141,8 +169,13 @@ describe("the x402 tab", () => {
     );
   });
 
-  it("states the two networks in two tiles, and names no plan, usage or quota", async () => {
-    stubHub({ account: () => answer(200, ACTIVE) });
+  // No `usage` at all: an x402 older than its account quota, or an account without a key.
+  it.each([
+    ["an x402 that sends no usage", ACTIVE],
+    ["no key", NO_KEY],
+    ["no key, whatever usage comes with it", withUsage(NO_KEY)],
+  ])("states the two networks in two tiles, and names no plan, usage or quota, for %s", async (_, account) => {
+    stubHub({ account: () => answer(200, account) });
     renderAt("/api/dashboard/x402");
     await card();
     const pubnet = screen.getByRole("heading", { level: 2, name: "Mainnet (pubnet)" });
@@ -153,6 +186,106 @@ describe("the x402 tab", () => {
     expect(testnet.closest("section")?.textContent).toMatch(/No API key needed$/);
     const panel = screen.getByRole("tabpanel", { name: "x402" });
     expect(panel.textContent).not.toMatch(/quota|usage|rate limit|plan/i);
+  });
+
+  // x402's count of the account's payments on Mainnet this month (`details.usage`): a revoked key's
+  // account still has its month.
+  it.each([
+    ["an active key", withUsage(ACTIVE)],
+    ["a revoked key", withUsage(REVOKED_CAPPED)],
+  ])("shows the month's payments on Mainnet for %s: used of the limit, what is left, the reset and the plan", async (_, account) => {
+    stubHub({ account: () => answer(200, account) });
+    renderAt("/api/dashboard/x402");
+    const usage = await tile("Monthly Usage · Mainnet");
+    expect(within(usage).getByTestId("usage-used").textContent).toBe("312");
+    expect(within(usage).getByTestId("usage-limit").textContent).toBe("1000");
+    expect(usage.textContent).toMatch(/1,000 payments/);
+    expect(within(usage).getByTestId("usage-remaining").textContent).toBe("688");
+    expect(usage.textContent).toMatch(/31% used/);
+    expect(usage.textContent).toMatch(/Resets 1 December/);
+    expect(within(usage).getByText("Free")).toBeTruthy();
+    // The facilitator's own count, so there is no reporting delay to state; and no quota reached.
+    expect(usage.textContent).not.toMatch(/delay|last updated|requests/i);
+    expect(within(usage).queryByTestId("usage-quota-reached")).toBeNull();
+    // In the Mainnet tile's place; the Testnet one is as it was.
+    expect(screen.queryByRole("heading", { level: 2, name: "Mainnet (pubnet)" })).toBeNull();
+    const testnet = screen.getByRole("heading", { level: 2, name: "Testnet" });
+    expect(testnet.closest("section")?.textContent).toBe("TestnetNo API key needed");
+  });
+
+  // At the quota, and past it: x402's count can pass the limit, and the strip stays.
+  it.each([
+    ["at", { used: 1000, remaining: 0 }],
+    ["past", { used: 1004, remaining: 0 }],
+  ])("says until when Mainnet /settle refuses, %s the quota", async (_, counts) => {
+    stubHub({ account: () => answer(200, withUsage(ACTIVE, { ...USAGE, ...counts })) });
+    renderAt("/api/dashboard/x402");
+    const usage = await tile("Monthly Usage · Mainnet");
+    const strip = within(usage).getByTestId("usage-quota-reached");
+    expect(strip.textContent).toBe(
+      "Monthly quota reached. Mainnet /settle refuses until 1 December. Contact us for a higher limit.",
+    );
+    const contact = within(strip).getByRole("link", { name: "Contact us for a higher limit." });
+    expect(contact.getAttribute("href")).toBe("https://www.rumblefish.dev/contact/");
+    expect(within(usage).getByTestId("usage-remaining").textContent).toBe("0");
+    expect(usage.textContent).toMatch(/100% - limit reached/);
+  });
+
+  // `usage: null` is x402 failing to read the month; a usage the page can't read is the same.
+  it.each([
+    ["null", null],
+    ["something that isn't an object", "lots"],
+    ["a count that isn't a number", { ...USAGE, used: "312" }],
+    ["a count below zero", { ...USAGE, remaining: -1 }],
+    ["a count that isn't whole", { ...USAGE, limit: 1000.5 }],
+    ["a limit of 0", { ...USAGE, used: 0, remaining: 0, limit: 0 }],
+    ["no reset", { ...USAGE, resets_at: undefined }],
+    ["a reset that isn't a date", { ...USAGE, resets_at: "soon" }],
+    ["a reset that isn't RFC 3339", { ...USAGE, resets_at: "12/01/2026" }],
+    ["a reset on a day that doesn't exist", { ...USAGE, resets_at: "2026-02-30T00:00:00Z" }],
+    ["no plan", { ...USAGE, plan: undefined }],
+    ["a plan without a name", { ...USAGE, plan: { ...USAGE.plan, name: "" } }],
+    ["a quota that isn't a month's", { ...USAGE, plan: { ...USAGE.plan, quota_period: "week" } }],
+  ])("says the usage could not be loaded when x402 sends %s", async (_, usage) => {
+    stubHub({ account: () => answer(200, withUsage(ACTIVE, usage)) });
+    renderAt("/api/dashboard/x402");
+    const key = await card();
+    const failed = await tile("Monthly Usage · Mainnet");
+    expect(body(failed)).toBe("Could not load your usage.");
+    // The page's one failure: the key itself was read.
+    expect(screen.getByRole("alert")).toBe(within(failed).getByTestId("usage-failed"));
+    expect(within(key).getByText("Active")).toBeTruthy();
+    expect(screen.queryByRole("heading", { level: 2, name: "Mainnet (pubnet)" })).toBeNull();
+  });
+
+  // Until the account is read there is no month to show: the Mainnet tile is true for everyone.
+  it("keeps the Mainnet tile while the account is asked for, then shows the month", async () => {
+    let answerAccount: (response: Response) => void = () => {};
+    stubHub({ account: () => new Promise<Response>((resolve) => (answerAccount = resolve)) });
+    renderAt("/api/dashboard/x402");
+    await screen.findByText("Checking for your API key…");
+    const pubnet = await screen.findByRole("heading", { level: 2, name: "Mainnet (pubnet)" });
+    expect(body(pubnet.closest("section") as HTMLElement)).toBe(
+      "API key required on /verify and /settle",
+    );
+    expect(screen.queryByRole("heading", { level: 2, name: "Monthly Usage · Mainnet" })).toBeNull();
+    answerAccount(answer(200, withUsage(ACTIVE)));
+    const usage = await tile("Monthly Usage · Mainnet");
+    expect(within(usage).getByTestId("usage-used").textContent).toBe("312");
+  });
+
+  // A failed read is the key card's to say; the Mainnet tile stays as it was.
+  it("keeps the Mainnet tile when the account can't be read", async () => {
+    stubHub({ account: () => answer(502, { error: "x402_unavailable" }) });
+    renderAt("/api/dashboard/x402");
+    const failed = await screen.findByTestId("account-failed");
+    expect(screen.getByRole("alert")).toBe(failed);
+    const pubnet = screen.getByRole("heading", { level: 2, name: "Mainnet (pubnet)" });
+    expect(body(pubnet.closest("section") as HTMLElement)).toBe(
+      "API key required on /verify and /settle",
+    );
+    expect(screen.queryByRole("heading", { level: 2, name: "Monthly Usage · Mainnet" })).toBeNull();
+    expect(screen.queryByTestId("usage-failed")).toBeNull();
   });
 
   it("shows an active key masked, with its id, issue date and account, and the month's rule", async () => {

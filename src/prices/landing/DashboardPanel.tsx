@@ -257,11 +257,14 @@ export function UsageMeter({
   remaining,
   resetLabel,
   headline = false,
+  unit = 'requests',
 }: {
   used: number | null;
   limit: number | null;
   remaining?: number | null;
   resetLabel?: ReactNode;
+  /** What is counted, after the headline's limit: the hub's x402 tab counts payments. */
+  unit?: string;
   /**
    * The dashboard's treatment: the count set large in the brand colour, with
    * the percentage and what is left on the row under the bar. The landing
@@ -328,7 +331,7 @@ export function UsageMeter({
             <RawFigure testId="usage-used" value={used} />
           </Typography>
           <Typography variant="subtitle1" sx={{ color: color.text.secondary }}>
-            / <RawFigure testId="usage-limit" value={limit} /> requests
+            / <RawFigure testId="usage-limit" value={limit} /> {unit}
           </Typography>
         </Stack>
       )}

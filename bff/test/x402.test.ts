@@ -2,7 +2,7 @@ import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import { productClient, PRODUCT_TIMEOUT_MS, type Caller } from "../src/products/client.ts";
 import { ACCOUNT_ID } from "./fake-discord.ts";
-import { X402_KEY, x402Usual as usual } from "./fake-x402.ts";
+import { X402_KEY, X402_USAGE, x402Usual as usual } from "./fake-x402.ts";
 import { envelopeOf, FakeProduct, type Answer } from "./fake-product.ts";
 
 const NOW = Date.UTC(2026, 10, 18, 12);
@@ -98,6 +98,17 @@ describe("the x402 client", () => {
     expect(logged()).toBe(`x402_key_revealed discord:${ACCOUNT_ID} jti:${call?.claims.jti}`);
     expect(logged()).not.toContain(X402_KEY);
     expect(logged()).not.toContain(call?.token);
+  });
+
+  it("passes the account's details.usage on to the page whole, a null one too", async () => {
+    const { x402, client } = start();
+    const account = usual("/account", ACCOUNT_ID);
+    expect(await client.account(CALLER)).toStrictEqual({ ok: true, body: account });
+    expect(account.details).toStrictEqual({ showable: true, usage: X402_USAGE });
+    // x402 couldn't read the month: the page is told so, not given zeros.
+    const unread = { ...account, details: { showable: true, usage: null } };
+    x402.answer("/account", () => Response.json(unread));
+    expect(await client.account(CALLER)).toStrictEqual({ ok: true, body: unread });
   });
 
   it("answers 502 x402_unavailable when x402 can't be reached, naming only how", async () => {
