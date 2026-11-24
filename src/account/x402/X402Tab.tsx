@@ -9,11 +9,23 @@ import type { Account } from "../prices/KeyCard";
 import { useIssueWindow } from "../useIssueWindow";
 import { fetchAccount } from "./api";
 import { X402KeyCard, type AccountView } from "./X402KeyCard";
+import { X402UsageCard } from "./X402UsageCard";
 
 /**
- * The dashboard's x402 tab: the API Key card, from the Prices tab's parts without its usage and
- * rate limit, and two tiles that say what is so on each network. What feeds it is the hub's
- * backend: one `account` call for the key, and `key/reveal` and `key/revoke` on a press.
+ * The account's month on Mainnet, once the account is read with a key and x402 sends a usage for
+ * it (`null` when x402 couldn't read it), or `undefined` for the Mainnet tile.
+ */
+const usageOf = (view: AccountView) =>
+  view.state === "ok" && view.account.key.state !== "none" ? view.account.usage : undefined;
+
+/**
+ * The dashboard's x402 tab: the API Key card, from the Prices tab's parts without its rate limit;
+ * on Mainnet, the account's payments this month; and on testnet, a tile that says no key is
+ * needed. The Mainnet tile says what is so there, as it did before the account quota, wherever
+ * there is no month to show: while the account is read, when its read failed (the key card says
+ * so), for an account without a key, and from an x402 that sends no usage. What feeds it is the
+ * hub's backend: one `account` call for the key and its use, and `key/reveal` and `key/revoke` on
+ * a press.
  */
 export function X402Tab({ account }: { account: Account }) {
   const fromAddress = useIssueOutcome();
@@ -73,6 +85,8 @@ export function X402Tab({ account }: { account: Account }) {
     );
   };
 
+  const usage = usageOf(view);
+
   return (
     <PortalStatusChrome>
       <X402KeyCard
@@ -84,7 +98,7 @@ export function X402Tab({ account }: { account: Account }) {
         onReload={reload}
         onRevoked={onRevoked}
       />
-      {/* What is so on each network: pubnet reads the key, testnet none (0105). */}
+      {/* Each network: pubnet reads the key and counts the month's payments, testnet neither. */}
       <Box
         sx={{
           display: "grid",
@@ -93,9 +107,13 @@ export function X402Tab({ account }: { account: Account }) {
           gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" },
         }}
       >
-        <DashboardCard title="Mainnet (pubnet)">
-          <p>API key required on /verify and /settle</p>
-        </DashboardCard>
+        {usage !== undefined ? (
+          <X402UsageCard usage={usage} />
+        ) : (
+          <DashboardCard title="Mainnet (pubnet)">
+            <p>API key required on /verify and /settle</p>
+          </DashboardCard>
+        )}
         <DashboardCard title="Testnet">
           <p>No API key needed</p>
         </DashboardCard>

@@ -55,8 +55,9 @@ const dayOr = (value: string | null | undefined) =>
 
 /**
  * The x402 tab's "API Key" card: the Prices tab's (`../prices/KeyCard.tsx`), from the same parts,
- * without its usage, plan and rate limit, which x402 has none of; its rule is the calendar month
- * (UTC). Copied rather than shared, since the parts that differ run through the whole of it.
+ * without its usage, plan and rate limit (the month's payments are `X402UsageCard`'s); its rule is
+ * the calendar month (UTC). Copied rather than shared, since the parts that differ run through the
+ * whole of it.
  *
  * - **No key**: "Get API Key", a form `POST` to the hub with `product=x402`, its round trip in a
  *   second window (`../GetKeyForm.tsx`).

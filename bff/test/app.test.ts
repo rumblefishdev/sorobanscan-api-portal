@@ -11,7 +11,7 @@ import { createdAt, httpDiscord } from "../src/discord.ts";
 import { missingSettings, readSettings, type HubSettings } from "../src/settings.ts";
 import { tokens } from "../src/tokens.ts";
 import { FakeProduct } from "./fake-product.ts";
-import { X402_KEY, x402Usual } from "./fake-x402.ts";
+import { X402_KEY, X402_USAGE, x402Usual } from "./fake-x402.ts";
 import { ACCOUNT_ID, BOTH_SCOPES, FakeDiscord } from "./fake-discord.ts";
 import {
   envelope,
@@ -1797,8 +1797,8 @@ describe("x402, by opt-in", () => {
     expect(account.status).toBe(200);
     const accountBody = (await account.json()) as { details?: unknown };
     expect(accountBody).toEqual(x402Usual("/account", ACCOUNT_ID));
-    // The product's `details.showable` reaches the page untouched.
-    expect(accountBody.details).toEqual({ showable: true });
+    // The product's `details.showable` and `details.usage` reach the page untouched.
+    expect(accountBody.details).toEqual({ showable: true, usage: X402_USAGE });
     const reveal = await browser.request("/api/hub/x402/key/reveal", { method: "POST" });
     expect(await reveal.json()).toEqual(x402Usual("/key/reveal", ACCOUNT_ID));
     const revoke = await browser.request("/api/hub/x402/key/revoke", { method: "POST" });
