@@ -10,6 +10,8 @@ When the portal asks the x402 Facilitator about your key, or to issue, show or r
 
 When you use the key on Stellar Mainnet (`stellar:pubnet`), the x402 Facilitator checks it against the registry, counts your requests against its rate limits under your Discord account ID, and logs each request it verifies or settles with your Discord account ID.
 
+Each account has a plan, the free one unless We change it, which sets the limits on what its key may settle on Stellar Mainnet. The x402 Facilitator counts the payments it sends to the network with your key on Stellar Mainnet, including any that fail, and the network fees it pays for them, under your Discord account ID, to apply your plan's limits and to show you your use in the portal. It keeps them for about two months. If your plan is changed, We keep a record of it in the registry: the plan, when it was set, by whom, and a note.
+
 The portal's servers log your sign-ins and the issuing, showing and revocation of your key with your Discord account ID. The servers that manage x402 keys log the same events with a short identifier of the key, without your Discord account ID.
 
 The registry, the encrypted copies and the x402 Facilitator run on a dedicated server rented from **Hetzner** in Germany, which requests reach through **Cloudflare**. Their logs are sent to Amazon CloudWatch in the AWS `eu-central-1` region and kept for up to 30 days. Their database backups are encrypted and kept on Hetzner storage for 14 days.
