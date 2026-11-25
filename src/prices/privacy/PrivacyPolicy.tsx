@@ -32,7 +32,7 @@ const policyOf = (products: readonly string[]) =>
  * which version a visitor read — bump it with every edit to either file.
  * `privacy-policy.rendered.txt` holds it too, so it changes with it.
  */
-export const POLICY_DATED = '24 November 2026';
+export const POLICY_DATED = '25 November 2026';
 
 /**
  * `**bold**`, `` `code` `` and the hard line breaks the draft writes with two
